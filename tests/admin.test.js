@@ -55,23 +55,36 @@ describe('GET /admin — content', () => {
     delete process.env.ADMIN_PASSWORD;
   });
 
-  test('shows all RSVPs in an HTML table', async () => {
-    db.insertRsvp({ name: 'Alice', email: 'alice@example.com', attending: 1, meal_preference: 'Fish', dietary_restrictions: null });
-    db.insertRsvp({ name: 'Bob', email: 'bob@example.com', attending: 0, meal_preference: null, dietary_restrictions: 'Vegan' });
+  test('shows all RSVPs with new columns in HTML table', async () => {
+    db.insertRsvp({ name: 'Alice', email: 'alice@example.com', attending: 1, event_type: 'full', is_vegan: 0, meal_preference: 1, dietary_restrictions: null });
+    db.insertRsvp({ name: 'Bob',   email: 'bob@example.com',   attending: 1, event_type: 'ceremony_party', is_vegan: null, meal_preference: null, dietary_restrictions: null });
+    db.insertRsvp({ name: 'Carol', email: 'carol@example.com', attending: 1, event_type: 'full', is_vegan: 1, meal_preference: null, dietary_restrictions: 'No nuts' });
 
     const res = await request(app).get('/admin').auth('admin', 'secret');
     expect(res.status).toBe(200);
+
+    // Alice — full day, not vegan, veggie meal
     expect(res.text).toContain('Alice');
-    expect(res.text).toContain('alice@example.com');
-    expect(res.text).toContain('Yes');
-    expect(res.text).toContain('Fish');
+    expect(res.text).toContain('Full day');
+    expect(res.text).toContain('Veggie');
+
+    // Bob — ceremony/evening only
     expect(res.text).toContain('Bob');
-    expect(res.text).toContain('No');
-    expect(res.text).toContain('Vegan');
+    expect(res.text).toContain('Ceremony / Evening');
+
+    // Carol — full day, vegan
+    expect(res.text).toContain('Carol');
+    expect(res.text).toContain('No nuts');
+  });
+
+  test('shows "Meat" for meal_preference 2', async () => {
+    db.insertRsvp({ name: 'Dave', email: 'd@example.com', attending: 1, event_type: 'full', is_vegan: 0, meal_preference: 2, dietary_restrictions: null });
+    const res = await request(app).get('/admin').auth('admin', 'secret');
+    expect(res.text).toContain('Meat');
   });
 
   test('shows RSVP count in the heading', async () => {
-    db.insertRsvp({ name: 'Alice', email: 'a@example.com', attending: 1, meal_preference: null, dietary_restrictions: null });
+    db.insertRsvp({ name: 'Alice', email: 'a@example.com', attending: 1, event_type: 'ceremony_party', is_vegan: null, meal_preference: null, dietary_restrictions: null });
     const res = await request(app).get('/admin').auth('admin', 'secret');
     expect(res.text).toContain('RSVPs (1)');
   });
@@ -83,7 +96,7 @@ describe('GET /admin — content', () => {
   });
 
   test('escapes HTML special characters in guest data', async () => {
-    db.insertRsvp({ name: '<script>alert(1)</script>', email: 'x@example.com', attending: 1, meal_preference: null, dietary_restrictions: null });
+    db.insertRsvp({ name: '<script>alert(1)</script>', email: 'x@example.com', attending: 1, event_type: 'ceremony_party', is_vegan: null, meal_preference: null, dietary_restrictions: null });
     const res = await request(app).get('/admin').auth('admin', 'secret');
     expect(res.text).not.toContain('<script>alert(1)</script>');
     expect(res.text).toContain('&lt;script&gt;');

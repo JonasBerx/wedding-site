@@ -2,7 +2,7 @@ const express = require('express');
 const { requireAuth } = require('../middleware/auth');
 
 function escHtml(str) {
-  if (!str) return '';
+  if (!str && str !== 0) return '';
   return String(str)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -17,18 +17,28 @@ function createAdminRouter(db) {
     const rsvps = db.getAllRsvps();
 
     const rows = rsvps
-      .map(
-        (r) => `
+      .map((r) => {
+        const eventDisplay = r.event_type === 'full'
+          ? 'Full day'
+          : r.event_type === 'ceremony_party'
+            ? 'Ceremony / Evening'
+            : '—';
+        const veganDisplay = r.is_vegan === 1 ? 'Yes' : '—';
+        const mealDisplay  = r.meal_preference === 1 ? 'Veggie' : r.meal_preference === 2 ? 'Meat' : '—';
+
+        return `
         <tr>
           <td>${r.id}</td>
           <td>${escHtml(r.name)}</td>
           <td>${escHtml(r.email)}</td>
           <td>${r.attending ? 'Yes' : 'No'}</td>
-          <td>${escHtml(r.meal_preference)}</td>
+          <td>${eventDisplay}</td>
+          <td>${veganDisplay}</td>
+          <td>${mealDisplay}</td>
           <td>${escHtml(r.dietary_restrictions)}</td>
           <td>${escHtml(r.submitted_at)}</td>
-        </tr>`
-      )
+        </tr>`;
+      })
       .join('');
 
     res.send(`<!DOCTYPE html>
@@ -54,7 +64,9 @@ function createAdminRouter(db) {
         <th>Name</th>
         <th>Email</th>
         <th>Attending</th>
-        <th>Meal preference</th>
+        <th>Event</th>
+        <th>Vegan</th>
+        <th>Meal</th>
         <th>Dietary restrictions</th>
         <th>Submitted</th>
       </tr>
