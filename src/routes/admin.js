@@ -1,8 +1,9 @@
 const express = require('express');
+const { requireAuth } = require('../middleware/auth');
 
 function createAdminRouter(_db) {
   const router = express.Router();
-  router.get('/', (_req, res) => res.status(501).send('Not implemented'));
+  router.get('/', requireAuth, (_req, res) => res.status(200).send('Admin'));
   return router;
 }
 
