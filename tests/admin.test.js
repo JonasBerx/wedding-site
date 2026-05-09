@@ -14,6 +14,8 @@ describe('GET /admin — authentication', () => {
 
   afterEach(() => {
     db.close();
+    delete process.env.ADMIN_USER;
+    delete process.env.ADMIN_PASSWORD;
   });
 
   test('returns 401 with no credentials', async () => {
