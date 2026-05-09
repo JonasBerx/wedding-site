@@ -73,7 +73,7 @@ describe('GET /admin — content', () => {
   test('shows RSVP count in the heading', async () => {
     db.insertRsvp({ name: 'Alice', email: 'a@example.com', attending: 1, meal_preference: null, dietary_restrictions: null });
     const res = await request(app).get('/admin').auth('admin', 'secret');
-    expect(res.text).toContain('1');
+    expect(res.text).toContain('RSVPs (1)');
   });
 
   test('shows empty table when no RSVPs', async () => {
