@@ -165,3 +165,40 @@ describe('POST /api/registry/unclaim', () => {
     expect(db.getRegistryItemById(item.id).claimed_by_rsvp_id).toBeNull();
   });
 });
+
+describe('unclaimable items', () => {
+  let app, db;
+  beforeEach(() => { db = initDb(':memory:'); app = createApp(db); });
+  afterEach(()  => { db.close(); });
+
+  test('GET /api/registry includes unclaimable on each item', async () => {
+    db.insertRegistryItem({ title: 'Espresso machine' });
+    db.insertRegistryItem({ title: 'Cash gift', unclaimable: true });
+    const res = await request(app).get('/api/registry');
+    expect(res.status).toBe(200);
+    expect(res.body[0]).toEqual(expect.objectContaining({ title: 'Espresso machine', unclaimable: 0, claimed: false }));
+    expect(res.body[1]).toEqual(expect.objectContaining({ title: 'Cash gift', unclaimable: 1, claimed: false }));
+  });
+
+  test('POST /api/registry/claim rejects unclaimable item with 400', async () => {
+    db.insertRegistryItem({ title: 'Cash gift', unclaimable: true });
+    db.insertRsvp({ name: 'Alice', email: 'alice@example.com', attending: 1 });
+    const [item] = db.getAllRegistryItems();
+    const res = await request(app).post('/api/registry/claim')
+      .send({ item_id: item.id, email: 'alice@example.com' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('unclaimable');
+    const reread = db.getRegistryItemById(item.id);
+    expect(reread.claimed_by_rsvp_id).toBeNull();
+  });
+
+  test('POST /api/registry/unclaim rejects unclaimable item with 400', async () => {
+    db.insertRegistryItem({ title: 'Cash gift', unclaimable: true });
+    db.insertRsvp({ name: 'Alice', email: 'alice@example.com', attending: 1 });
+    const [item] = db.getAllRegistryItems();
+    const res = await request(app).post('/api/registry/unclaim')
+      .send({ item_id: item.id, email: 'alice@example.com' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('unclaimable');
+  });
+});

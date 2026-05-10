@@ -18,6 +18,7 @@ function createRegistryRouter(db) {
       id: item.id,
       title: item.title,
       description: item.description,
+      unclaimable: item.unclaimable,
       claimed: item.claimed_by_rsvp_id !== null,
     })));
   });
@@ -35,6 +36,7 @@ function createRegistryRouter(db) {
 
     const item = db.getRegistryItemById(item_id);
     if (!item) return res.status(404).json({ error: 'Item not found' });
+    if (item.unclaimable === 1) return res.status(400).json({ error: 'unclaimable' });
     if (item.claimed_by_rsvp_id !== null) return res.status(409).json({ error: 'Item is already claimed' });
 
     const claimResult = db.claimRegistryItem(item_id, rsvp.id);
@@ -52,6 +54,7 @@ function createRegistryRouter(db) {
 
     const item = db.getRegistryItemById(item_id);
     if (!item) return res.status(404).json({ error: 'Item not found' });
+    if (item.unclaimable === 1) return res.status(400).json({ error: 'unclaimable' });
     if (item.claimed_by_rsvp_id !== rsvp.id) return res.status(403).json({ error: 'You do not own this claim' });
 
     db.unclaimRegistryItem(item_id);
