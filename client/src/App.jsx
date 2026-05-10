@@ -1,7 +1,10 @@
 import React from 'react';
+import { Routes, Route } from 'react-router-dom';
 import { VariationB } from './WeddingSite';
+import RegistryPage from './pages/RegistryPage';
+import AdminDashboard from './pages/AdminDashboard';
 
-export default function App() {
+function WeddingSiteWrapper() {
   const [mode, setMode] = React.useState('day');
   const paletteMode = mode === 'evening' ? 'night' : 'day';
 
@@ -22,5 +25,15 @@ export default function App() {
         {mode === 'day' ? 'Evening mode' : 'Day mode'}
       </button>
     </>
+  );
+}
+
+export default function App() {
+  return (
+    <Routes>
+      <Route path="/" element={<WeddingSiteWrapper />} />
+      <Route path="/registry" element={<RegistryPage />} />
+      <Route path="/admin" element={<AdminDashboard />} />
+    </Routes>
   );
 }
