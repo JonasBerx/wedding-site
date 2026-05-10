@@ -122,6 +122,10 @@ function CountdownBlock({ font, labelFont, color, accent, separator = '·' }) {
   );
 }
 
+function stripHtml(s) {
+  return typeof s === 'string' ? s.replace(/&amp;/g, '&').replace(/<[^>]*>/g, '') : '';
+}
+
 // ─────────────────────────────────────────────────────────────
 // RSVPForm — controlled local state, 'thank-you' state on submit.
 // Renders inputs styled by the variation's `theme` prop (accent, ink, rule).
@@ -130,9 +134,18 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
   const isMobile = useIsMobile();
   const [form, setForm] = React.useState({
     names: '', email: '', attending: 'yes', guests: 2, diet: '', song: '',
-    eventType: 'full', isVegan: false, mealChoice: '',
+    eventType: 'full', firstCourseId: '', mainCourseId: '',
   });
   const [uiState, setUiState] = React.useState('idle');
+  const [menu, setMenu] = React.useState(null);
+  React.useEffect(() => {
+    let cancelled = false;
+    fetch('/api/menu')
+      .then(r => (r.ok ? r.json() : []))
+      .then(data => { if (!cancelled) setMenu(data); })
+      .catch(() => { if (!cancelled) setMenu([]); });
+    return () => { cancelled = true; };
+  }, []);
 
   const inputStyle = {
     width: '100%',
@@ -173,8 +186,8 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
     if (form.attending === 'yes') {
       body.event_type = form.eventType;
       if (form.eventType === 'full') {
-        body.is_vegan = form.isVegan;
-        if (!form.isVegan && form.mealChoice !== '') body.meal_preference = Number(form.mealChoice);
+        body.first_course_id = Number(form.firstCourseId);
+        body.main_course_id  = Number(form.mainCourseId);
       }
     }
     try {
@@ -213,7 +226,10 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
     );
   }
 
-  const disabled = uiState === 'submitting';
+  const submitting = uiState === 'submitting';
+  const fullDay = form.attending === 'yes' && form.eventType === 'full';
+  const menuMissing = fullDay && (menu === null || menu.length === 0);
+  const disabled = submitting || menuMissing;
 
   const RadioDot = ({ selected }) => (
     <span style={{
@@ -279,7 +295,7 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
                 <RadioDot selected={form.eventType === val} />
                 <input type="radio" name="eventType" value={val}
                   checked={form.eventType === val}
-                  onChange={() => setForm({ ...form, eventType: val, isVegan: false, mealChoice: '' })}
+                  onChange={() => setForm({ ...form, eventType: val, firstCourseId: '', mainCourseId: '' })}
                   style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }} />
                 {lbl}
               </label>
@@ -288,51 +304,44 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
         </div>
       )}
 
-      {/* Meal preference — full-day guests only */}
+      {/* Course dropdowns — full-day guests only */}
       {form.attending === 'yes' && form.eventType === 'full' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {/* Vegan checkbox */}
-          <label style={{
-            display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer',
-            fontFamily: bodyFont, fontSize: 16, color: theme.ink,
-          }}>
-            <span style={{
-              width: 18, height: 18,
-              border: `1px solid ${theme.accent}`,
-              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-              background: form.isVegan ? theme.accent : 'transparent',
-              flex: '0 0 auto', transition: 'background .15s',
-            }}>
-              {form.isVegan && <span style={{ width: 10, height: 10, background: theme.paper }} />}
-            </span>
-            <input type="checkbox" checked={form.isVegan}
-              onChange={(e) => setForm({ ...form, isVegan: e.target.checked, mealChoice: '' })}
-              style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }} />
-            I follow a vegan diet (special menu)
-          </label>
-
-          {/* Meal radio — hidden when vegan */}
-          {!form.isVegan && (
-            <div>
-              <span style={labelStyle}>Meal preference</span>
-              <div style={{ display: 'flex', gap: 24, marginTop: 8 }}>
-                {[['1', 'Veggie'], ['2', 'Meat']].map(([val, lbl]) => (
-                  <label key={val} style={{
-                    display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer',
-                    fontFamily: bodyFont, fontSize: 16, color: theme.ink,
-                  }}>
-                    <RadioDot selected={form.mealChoice === val} />
-                    <input type="radio" name="meal" value={val}
-                      checked={form.mealChoice === val}
-                      onChange={(e) => setForm({ ...form, mealChoice: e.target.value })}
-                      style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }} />
-                    {lbl}
-                  </label>
-                ))}
-              </div>
+        <>
+          {(menu === null) && (
+            <div style={{ fontFamily: bodyFont, fontSize: 15, color: theme.inkSoft, fontStyle: 'italic' }}>
+              Loading menu…
             </div>
           )}
-        </div>
+          {menu && menu.length === 0 && (
+            <div style={{ fontFamily: bodyFont, fontSize: 15, color: theme.accent }}>
+              Menu is being finalised — please come back shortly to choose your courses.
+            </div>
+          )}
+          {menu && menu.length > 0 && ['first', 'main'].map(course => {
+            const list = menu.filter(i => i.course === course);
+            const stateKey = course === 'first' ? 'firstCourseId' : 'mainCourseId';
+            const heading  = course === 'first' ? 'First course' : 'Main course';
+            return (
+              <div key={course}>
+                <span style={labelStyle}>{heading}</span>
+                <select
+                  required
+                  value={form[stateKey]}
+                  disabled={disabled}
+                  onChange={(e) => setForm({ ...form, [stateKey]: e.target.value })}
+                  style={{ ...inputStyle, padding: '10px 0 10px', appearance: 'auto' }}
+                >
+                  <option value="" disabled>— pick one —</option>
+                  {list.map(item => (
+                    <option key={item.id} value={item.id}>
+                      {stripHtml(item.name)}{item.note ? ` — ${item.note}` : ''}{item.is_vegan ? ' (vegan)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            );
+          })}
+        </>
       )}
 
       {/* Guests + Dietary */}
@@ -385,7 +394,7 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
       }}
         onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.transform = 'translateY(-1px)'; }}
         onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; }}>
-        {disabled ? 'Sending…' : ctaLabel}
+        {submitting ? 'Sending…' : ctaLabel}
       </button>
     </form>
   );
