@@ -8,6 +8,13 @@ import React from 'react';
 
 const WEDDING_DATE = new Date('2026-08-08T15:00:00+02:00');
 
+const WEDDING_FONTS = {
+  head:   '"DM Serif Display", serif',
+  body:   '"EB Garamond", Georgia, serif',
+  script: '"Caveat", cursive',
+  label:  '"EB Garamond", serif',
+};
+
 function useCountdown(target) {
   const [now, setNow] = React.useState(() => new Date());
   React.useEffect(() => {
@@ -521,7 +528,7 @@ const CAROUSEL_ITEMS = [
 ];
 
 export {
-  WEDDING_DATE, useCountdown, usePalette, PALETTES,
+  WEDDING_DATE, WEDDING_FONTS, useCountdown, usePalette, PALETTES,
   CountdownBlock, RSVPForm, PhotoPlaceholder, HeroCarousel,
   SCHEDULE, FAQS, REGISTRY, DRESS_CODE, MENU, CAROUSEL_ITEMS,
 };

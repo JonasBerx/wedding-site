@@ -1,7 +1,7 @@
 // variation-b.jsx — "Le Verger" composer.
 // Each section lives in its own file under sections/. This file just
 // builds the palette + font config and arranges them in order.
-import { usePalette } from './shared';
+import { usePalette, WEDDING_FONTS } from './shared';
 import { HeroSection } from './sections/Hero';
 import { CountdownSection } from './sections/Countdown';
 import { ScheduleSection } from './sections/Schedule';
@@ -16,12 +16,7 @@ import { FooterSection } from './sections/Footer';
 
 function VariationB({ mode = 'day' }) {
   const t = usePalette(mode);
-  const fonts = {
-    head:   '"DM Serif Display", serif',
-    body:   '"EB Garamond", Georgia, serif',
-    script: '"Caveat", cursive',
-    label:  '"EB Garamond", serif',
-  };
+  const fonts = WEDDING_FONTS;
 
   return (
     <div style={{
