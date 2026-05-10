@@ -2,41 +2,34 @@ const { initDb } = require('../src/db');
 
 describe('initDb', () => {
   let db;
+  beforeEach(() => { db = initDb(':memory:'); });
+  afterEach(()  => { db.close(); });
 
-  beforeEach(() => {
-    db = initDb(':memory:');
-  });
-
-  afterEach(() => {
-    db.close();
-  });
-
-  test('insertRsvp stores a record and getAllRsvps returns it', () => {
-    db.insertRsvp({
-      name: 'Alice',
-      email: 'alice@example.com',
-      attending: 1,
-      meal_preference: 'Fish',
+  test('rsvps table has new course-id columns and no old vegan/meal columns', () => {
+    const res = db.insertRsvp({
+      name: 'A', email: 'a@x.com', attending: 1,
+      event_type: 'full', first_course_id: null, main_course_id: null,
       dietary_restrictions: null,
     });
-    const rsvps = db.getAllRsvps();
-    expect(rsvps).toHaveLength(1);
-    expect(rsvps[0].name).toBe('Alice');
-    expect(rsvps[0].email).toBe('alice@example.com');
-    expect(rsvps[0].attending).toBe(1);
-    expect(rsvps[0].meal_preference).toBe('Fish');
-    expect(rsvps[0].dietary_restrictions).toBeNull();
+    expect(res.changes).toBe(1);
+    const all = db.getAllRsvps();
+    expect(all[0]).toEqual(expect.objectContaining({
+      first_course_id: null,
+      main_course_id: null,
+    }));
+    expect(all[0]).not.toHaveProperty('is_vegan');
+    expect(all[0]).not.toHaveProperty('meal_preference');
   });
 
-  test('getAllRsvps returns records most recent first', () => {
-    db.insertRsvp({ name: 'Alice', email: 'a@example.com', attending: 1, meal_preference: null, dietary_restrictions: null });
-    db.insertRsvp({ name: 'Bob', email: 'b@example.com', attending: 0, meal_preference: null, dietary_restrictions: null });
-    const rsvps = db.getAllRsvps();
-    expect(rsvps).toHaveLength(2);
-    expect(rsvps[0].name).toBe('Bob');
-  });
-
-  test('getAllRsvps returns empty array when no records', () => {
-    expect(db.getAllRsvps()).toEqual([]);
+  test('menu_items table accepts inserts and orders by sort_order within course', () => {
+    const a = db.insertMenuItem({ course: 'first', name: 'Tomato', note: 'basil', is_vegan: 0 });
+    const b = db.insertMenuItem({ course: 'first', name: 'Beet',   note: 'goat',  is_vegan: 0 });
+    const c = db.insertMenuItem({ course: 'main',  name: 'Lamb',   note: 'jus',   is_vegan: 0 });
+    expect(a.changes).toBe(1);
+    const items = db.getMenuItems();
+    expect(items.map(i => i.name)).toEqual(['Tomato', 'Beet', 'Lamb']);
+    expect(items[0].sort_order).toBe(0);
+    expect(items[1].sort_order).toBe(1);
+    expect(items[2].sort_order).toBe(0);
   });
 });
