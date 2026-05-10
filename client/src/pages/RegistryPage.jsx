@@ -160,68 +160,130 @@ export default function RegistryPage() {
           }}>No gifts available yet — check back soon.</div>
         )}
 
-        <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-          {items.map((item, i) => {
-            const isMine = item.id === myClaimedItemId;
-            return (
-              <li key={item.id} style={{
-                display: 'flex',
-                alignItems: isMobile ? 'flex-start' : 'center',
-                gap: isMobile ? 12 : 16,
-                flexWrap: isMobile ? 'wrap' : 'nowrap',
-                padding: isMobile ? '18px 0' : '20px 0',
-                borderBottom: `1px solid ${t.rule}`,
-              }}>
-                <div style={{ color: t.accent, flexShrink: 0 }}>
-                  {ICONS[i % ICONS.length]}
-                </div>
-                <div style={{ flex: '1 1 60%', minWidth: 0 }}>
+        {(() => {
+          const universal = items.filter(i => i.unclaimable === 1);
+          const claimable = items.filter(i => i.unclaimable !== 1);
+          const showBothKickers = universal.length > 0 && claimable.length > 0;
+
+          const groupKickerStyle = {
+            fontFamily: fonts.label, fontSize: 11, letterSpacing: '0.32em',
+            textTransform: 'uppercase', color: t.label, textAlign: 'center',
+            marginBottom: 24, marginTop: 8,
+          };
+
+          const tilts = [-1.4, 0.7, -0.5];
+          const cardIcons = [
+            <Wildflower size={42} />,
+            <Lavender size={36} />,
+            <Sprig size={36} />,
+          ];
+
+          return (
+            <>
+              {universal.length > 0 && (
+                <div style={{ marginBottom: claimable.length > 0 ? 48 : 0 }}>
+                  {showBothKickers && <div style={groupKickerStyle}>Always welcome</div>}
                   <div style={{
-                    fontFamily: fonts.head, fontSize: isMobile ? 19 : 22, fontStyle: 'italic',
-                    color: t.ink, lineHeight: 1.2,
-                  }}>{item.title}</div>
-                  {item.description && (
-                    <div style={{
-                      fontFamily: fonts.body, fontSize: 15,
-                      color: t.inkSoft, marginTop: 4, lineHeight: 1.5,
-                    }}>{item.description}</div>
-                  )}
+                    display: 'grid', gridTemplateColumns: '1fr',
+                    gap: 28, maxWidth: 720, margin: '0 auto',
+                  }}>
+                    {universal.map((u, ui) => (
+                      <div key={u.id} style={{
+                        padding: '36px 30px 30px', background: t.paper,
+                        border: `1px solid ${t.rule}`,
+                        transform: `rotate(${tilts[ui % tilts.length]}deg)`,
+                        boxShadow: `7px 7px 0 ${t.accentSoft}38`,
+                        position: 'relative', textAlign: 'center',
+                      }}>
+                        <div style={{ marginBottom: 14, color: t.accent, display: 'flex', justifyContent: 'center' }}>
+                          {cardIcons[ui % cardIcons.length]}
+                        </div>
+                        <div style={{
+                          fontFamily: fonts.head, fontSize: 24, color: t.ink,
+                          marginBottom: 12, lineHeight: 1.2, fontStyle: 'italic',
+                        }}>{u.title}</div>
+                        {u.description && (
+                          <div style={{
+                            fontFamily: fonts.body, fontSize: 16, color: t.inkSoft,
+                            lineHeight: 1.55,
+                          }}>{u.description}</div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <div style={{ flexShrink: 0 }}>
-                  {isMine ? (
-                    <button
-                      onClick={() => handleRelease(item)}
-                      style={{
-                        background: 'transparent', color: t.ink,
-                        border: `1px solid ${t.ink}`, cursor: 'pointer',
-                        fontFamily: fonts.label, fontSize: 11,
-                        letterSpacing: '0.18em', textTransform: 'uppercase',
-                        padding: '8px 18px',
-                      }}
-                    >Release</button>
-                  ) : item.claimed ? (
-                    <span style={{
-                      fontFamily: fonts.label, fontSize: 11,
-                      letterSpacing: '0.2em', textTransform: 'uppercase',
-                      color: t.label, opacity: 0.5,
-                    }}>Taken</span>
-                  ) : (
-                    <button
-                      onClick={() => openClaim(item)}
-                      style={{
-                        background: t.ink, color: t.paper, border: 'none',
-                        cursor: 'pointer',
-                        fontFamily: fonts.label, fontSize: 11,
-                        letterSpacing: '0.18em', textTransform: 'uppercase',
-                        padding: '9px 18px',
-                      }}
-                    >Claim</button>
-                  )}
+              )}
+
+              {claimable.length > 0 && (
+                <div>
+                  {showBothKickers && <div style={groupKickerStyle}>A few specific gifts</div>}
+                  <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                    {claimable.map((item, i) => {
+                      const isMine = item.id === myClaimedItemId;
+                      return (
+                        <li key={item.id} style={{
+                          display: 'flex',
+                          alignItems: isMobile ? 'flex-start' : 'center',
+                          gap: isMobile ? 12 : 16,
+                          flexWrap: isMobile ? 'wrap' : 'nowrap',
+                          padding: isMobile ? '18px 0' : '20px 0',
+                          borderBottom: `1px solid ${t.rule}`,
+                        }}>
+                          <div style={{ color: t.accent, flexShrink: 0 }}>
+                            {ICONS[i % ICONS.length]}
+                          </div>
+                          <div style={{ flex: '1 1 60%', minWidth: 0 }}>
+                            <div style={{
+                              fontFamily: fonts.head, fontSize: isMobile ? 19 : 22, fontStyle: 'italic',
+                              color: t.ink, lineHeight: 1.2,
+                            }}>{item.title}</div>
+                            {item.description && (
+                              <div style={{
+                                fontFamily: fonts.body, fontSize: 15,
+                                color: t.inkSoft, marginTop: 4, lineHeight: 1.5,
+                              }}>{item.description}</div>
+                            )}
+                          </div>
+                          <div style={{ flexShrink: 0 }}>
+                            {isMine ? (
+                              <button
+                                onClick={() => handleRelease(item)}
+                                style={{
+                                  background: 'transparent', color: t.ink,
+                                  border: `1px solid ${t.ink}`, cursor: 'pointer',
+                                  fontFamily: fonts.label, fontSize: 11,
+                                  letterSpacing: '0.18em', textTransform: 'uppercase',
+                                  padding: '8px 18px',
+                                }}
+                              >Release</button>
+                            ) : item.claimed ? (
+                              <span style={{
+                                fontFamily: fonts.label, fontSize: 11,
+                                letterSpacing: '0.2em', textTransform: 'uppercase',
+                                color: t.label, opacity: 0.5,
+                              }}>Taken</span>
+                            ) : (
+                              <button
+                                onClick={() => openClaim(item)}
+                                style={{
+                                  background: t.ink, color: t.paper, border: 'none',
+                                  cursor: 'pointer',
+                                  fontFamily: fonts.label, fontSize: 11,
+                                  letterSpacing: '0.18em', textTransform: 'uppercase',
+                                  padding: '9px 18px',
+                                }}
+                              >Claim</button>
+                            )}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
                 </div>
-              </li>
-            );
-          })}
-        </ul>
+              )}
+            </>
+          );
+        })()}
       </div>
 
       <FooterSection t={t} fonts={fonts} />
