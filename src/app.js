@@ -4,6 +4,7 @@ const path = require('path');
 const createRsvpRouter = require('./routes/rsvp');
 const createAdminRouter = require('./routes/admin');
 const createRegistryRouter = require('./routes/registry');
+const createMenuRouter = require('./routes/menu');
 
 function createApp(db) {
   const app = express();
@@ -14,6 +15,7 @@ function createApp(db) {
   app.use('/api/rsvp', createRsvpRouter(db));
   app.use('/api/admin', createAdminRouter(db));
   app.use('/api/registry', createRegistryRouter(db));
+  app.use('/api/menu', createMenuRouter(db));
 
   app.use('/api', (req, res) => {
     res.status(404).json({ error: 'Not found' });
