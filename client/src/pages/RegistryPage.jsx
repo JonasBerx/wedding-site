@@ -11,6 +11,7 @@ export default function RegistryPage() {
 
   async function fetchItems() {
     const res = await fetch('/api/registry');
+    if (!res.ok) return;
     setItems(await res.json());
   }
 
@@ -41,8 +42,12 @@ export default function RegistryPage() {
       body: JSON.stringify({ item_id: itemId, email: rsvpEmail }),
     });
     if (!res.ok) {
-      const data = await res.json();
-      setMessage(data.error);
+      try {
+        const data = await res.json();
+        setMessage(data.error || 'Something went wrong');
+      } catch {
+        setMessage('Something went wrong');
+      }
       return;
     }
     setMyClaimedItemId(itemId);
@@ -57,7 +62,10 @@ export default function RegistryPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ item_id: itemId, email: rsvpEmail }),
     });
-    if (!res.ok) return;
+    if (!res.ok) {
+      setMessage('Could not release the gift. Please try again.');
+      return;
+    }
     setMyClaimedItemId(null);
     await fetchItems();
   }
