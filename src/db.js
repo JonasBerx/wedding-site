@@ -80,7 +80,7 @@ function initDb(path = 'rsvps.db') {
 
     claimRegistryItem(itemId, rsvpId) {
       return db.prepare(
-        'UPDATE registry_items SET claimed_by_rsvp_id = :rsvpId WHERE id = :itemId'
+        'UPDATE registry_items SET claimed_by_rsvp_id = :rsvpId WHERE id = :itemId AND claimed_by_rsvp_id IS NULL'
       ).run({ itemId, rsvpId });
     },
 

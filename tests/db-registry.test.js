@@ -10,6 +10,13 @@ describe('registry DB methods', () => {
     expect(result.changes).toBe(1);
   });
 
+  test('insertRegistryItem works without description', () => {
+    db.insertRegistryItem({ title: 'No desc' });
+    const [item] = db.getAllRegistryItems();
+    expect(item.title).toBe('No desc');
+    expect(item.description).toBeNull();
+  });
+
   test('getAllRegistryItems returns empty array initially', () => {
     expect(db.getAllRegistryItems()).toEqual([]);
   });
