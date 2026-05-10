@@ -1,5 +1,6 @@
 import React from 'react';
 import { usePaletteMode } from '../PaletteShell';
+import { useIsMobile } from '../shared';
 import { OliveBranch, Wildflower, Lavender, Sprig } from '../botanicals';
 import { FooterSection } from '../sections/Footer';
 import Toast from '../components/Toast';
@@ -10,6 +11,7 @@ const ICONS = [<Wildflower size={20} />, <Lavender size={20} />, <Sprig size={20
 
 export default function RegistryPage() {
   const { t, fonts } = usePaletteMode();
+  const isMobile = useIsMobile();
 
   const [items, setItems] = React.useState([]);
   const [loaded, setLoaded] = React.useState(false);
@@ -103,33 +105,42 @@ export default function RegistryPage() {
     }}>
       <Toast message={toast} onDismiss={() => setToast('')} />
 
-      <div style={{ position: 'relative', padding: '70px 80px 0', maxWidth: 900, margin: '0 auto' }}>
+      <div style={{
+        position: 'relative',
+        padding: isMobile ? '40px 20px 0' : '70px 80px 0',
+        maxWidth: 900, margin: '0 auto',
+      }}>
         <button
           onClick={openLookup}
           style={{
-            position: 'absolute', top: 80, right: 80,
+            position: isMobile ? 'static' : 'absolute',
+            top: isMobile ? 'auto' : 80,
+            right: isMobile ? 'auto' : 80,
+            display: isMobile ? 'block' : 'inline-block',
+            marginLeft: isMobile ? 'auto' : 0,
+            marginBottom: isMobile ? 24 : 0,
             background: 'transparent', border: 'none', cursor: 'pointer',
             fontFamily: fonts.label, fontSize: 11,
-            letterSpacing: '0.32em', textTransform: 'uppercase',
+            letterSpacing: '0.28em', textTransform: 'uppercase',
             color: t.label, opacity: 0.7, padding: 0,
           }}
         >View my claim →</button>
 
-        <div style={{ textAlign: 'center', marginBottom: 56 }}>
+        <div style={{ textAlign: 'center', marginBottom: isMobile ? 36 : 56 }}>
           <div style={{ display: 'flex', justifyContent: 'center', color: t.accentSoft, marginBottom: 20 }}>
-            <OliveBranch size={120} />
+            <OliveBranch size={isMobile ? 80 : 120} />
           </div>
           <div style={{
-            fontFamily: fonts.label, fontSize: 11,
-            letterSpacing: '0.32em', textTransform: 'uppercase',
+            fontFamily: fonts.label, fontSize: isMobile ? 10 : 11,
+            letterSpacing: '0.28em', textTransform: 'uppercase',
             color: t.label, marginBottom: 16,
           }}>choose with care</div>
           <div style={{
-            fontFamily: fonts.head, fontSize: 64, fontStyle: 'italic',
+            fontFamily: fonts.head, fontSize: isMobile ? 42 : 64, fontStyle: 'italic',
             lineHeight: 1, color: t.ink, marginBottom: 20,
           }}>Gift Registry</div>
           <div style={{
-            fontFamily: fonts.body, fontSize: 17, color: t.inkSoft,
+            fontFamily: fonts.body, fontSize: isMobile ? 16 : 17, color: t.inkSoft,
             maxWidth: 480, margin: '0 auto', lineHeight: 1.6,
           }}>
             Pick something for us — one gift per guest. You can change your mind any time.
@@ -137,7 +148,10 @@ export default function RegistryPage() {
         </div>
       </div>
 
-      <div style={{ maxWidth: 720, margin: '0 auto', padding: '0 80px 80px' }}>
+      <div style={{
+        maxWidth: 720, margin: '0 auto',
+        padding: isMobile ? '0 20px 60px' : '0 80px 80px',
+      }}>
         {loaded && items.length === 0 && (
           <div style={{
             textAlign: 'center', padding: '60px 0',
@@ -151,15 +165,19 @@ export default function RegistryPage() {
             const isMine = item.id === myClaimedItemId;
             return (
               <li key={item.id} style={{
-                display: 'flex', alignItems: 'center', gap: 16,
-                padding: '20px 0', borderBottom: `1px solid ${t.rule}`,
+                display: 'flex',
+                alignItems: isMobile ? 'flex-start' : 'center',
+                gap: isMobile ? 12 : 16,
+                flexWrap: isMobile ? 'wrap' : 'nowrap',
+                padding: isMobile ? '18px 0' : '20px 0',
+                borderBottom: `1px solid ${t.rule}`,
               }}>
                 <div style={{ color: t.accent, flexShrink: 0 }}>
                   {ICONS[i % ICONS.length]}
                 </div>
-                <div style={{ flex: 1 }}>
+                <div style={{ flex: '1 1 60%', minWidth: 0 }}>
                   <div style={{
-                    fontFamily: fonts.head, fontSize: 22, fontStyle: 'italic',
+                    fontFamily: fonts.head, fontSize: isMobile ? 19 : 22, fontStyle: 'italic',
                     color: t.ink, lineHeight: 1.2,
                   }}>{item.title}</div>
                   {item.description && (

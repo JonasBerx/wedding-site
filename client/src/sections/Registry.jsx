@@ -2,8 +2,10 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { SectionHead } from './helpers';
 import { Wildflower, Lavender, Sprig } from '../botanicals';
+import { useIsMobile } from '../shared';
 
 function RegistrySection({ t, fonts }) {
+  const isMobile = useIsMobile();
   const [items, setItems] = React.useState(null);
 
   React.useEffect(() => {
@@ -16,7 +18,7 @@ function RegistrySection({ t, fonts }) {
   }, []);
 
   if (items === null) {
-    return <section style={{ padding: '90px 120px 100px', minHeight: 360 }} />;
+    return <section style={{ padding: isMobile ? '60px 20px 70px' : '90px 120px 100px', minHeight: 360 }} />;
   }
 
   if (items.length === 0) {
@@ -35,8 +37,8 @@ function RegistrySection({ t, fonts }) {
   ];
 
   return (
-    <section style={{ padding: '90px 120px 100px' }}>
-      <div style={{ textAlign: 'center', marginBottom: 64 }}>
+    <section style={{ padding: isMobile ? '60px 20px 70px' : '90px 120px 100px' }}>
+      <div style={{ textAlign: 'center', marginBottom: isMobile ? 40 : 64 }}>
         <SectionHead t={t} fonts={fonts}
           kicker="a small, kind ask" title="If you'd like to give us something"
           subtitle="Honestly — your being there is everything. But here are a few small directions, in case you'd like one." align="center" />
@@ -45,8 +47,8 @@ function RegistrySection({ t, fonts }) {
       {!allClaimed && (
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-          gap: 36, maxWidth: 980, margin: '0 auto 56px',
+          gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit, minmax(280px, 1fr))',
+          gap: isMobile ? 28 : 36, maxWidth: 980, margin: isMobile ? '0 auto 40px' : '0 auto 56px',
         }}>
           {preview.map((r, i) => (
             <div key={r.id} style={{

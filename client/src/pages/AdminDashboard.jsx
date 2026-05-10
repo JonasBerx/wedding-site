@@ -187,7 +187,7 @@ export default function AdminDashboard() {
     <div style={{ minHeight: '100vh', background: PAPER, fontFamily: BODY_FONT, color: INK }}>
       <Toast message={toast} onDismiss={() => setToast('')} />
 
-      <div style={{ maxWidth: 1000, margin: '0 auto', padding: '60px 40px' }}>
+      <div style={{ maxWidth: 1000, margin: '0 auto', padding: '40px 16px' }}>
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <div style={{ color: ACCENT, marginBottom: 12, display: 'flex', justifyContent: 'center' }}>
             <Sprig size={36} />
@@ -202,7 +202,7 @@ export default function AdminDashboard() {
           }}>Admin</div>
         </div>
 
-        <div style={{ borderBottom: `1px solid ${RULE}`, marginBottom: 28, display: 'flex', gap: 32 }}>
+        <div style={{ borderBottom: `1px solid ${RULE}`, marginBottom: 28, display: 'flex', gap: 24, flexWrap: 'wrap' }}>
           {[
             { key: 'rsvps', label: `RSVPS · ${rsvps.length}` },
             { key: 'registry', label: `REGISTRY · ${registry.length}` },

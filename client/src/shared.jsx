@@ -21,6 +21,23 @@ const WEDDING_FONTS = {
   label:  '"EB Garamond", serif',
 };
 
+function useIsMobile(breakpoint = 768) {
+  const query = `(max-width: ${breakpoint}px)`;
+  const [isMobile, setIsMobile] = React.useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia(query).matches;
+  });
+  React.useEffect(() => {
+    const mq = window.matchMedia(query);
+    const handler = (e) => setIsMobile(e.matches);
+    mq.addEventListener ? mq.addEventListener('change', handler) : mq.addListener(handler);
+    return () => {
+      mq.removeEventListener ? mq.removeEventListener('change', handler) : mq.removeListener(handler);
+    };
+  }, [query]);
+  return isMobile;
+}
+
 function useCountdown(target) {
   const [now, setNow] = React.useState(() => new Date());
   React.useEffect(() => {
@@ -72,25 +89,30 @@ const usePalette = (mode) => PALETTES[mode] || PALETTES.day;
 // ─────────────────────────────────────────────────────────────
 function CountdownBlock({ font, labelFont, color, accent, separator = '·' }) {
   const { days, hours, minutes, seconds } = useCountdown(WEDDING_DATE);
+  const isMobile = useIsMobile();
   const cells = [
     [days, 'days'], [hours, 'hours'], [minutes, 'minutes'], [seconds, 'seconds'],
   ];
   return (
-    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 28, justifyContent: 'center' }}>
+    <div style={{
+      display: 'flex', alignItems: 'flex-start',
+      gap: isMobile ? 10 : 28, justifyContent: 'center',
+      flexWrap: 'nowrap',
+    }}>
       {cells.map(([n, label], i) => (
         <React.Fragment key={label}>
-          <div style={{ textAlign: 'center', minWidth: 80 }}>
+          <div style={{ textAlign: 'center', minWidth: isMobile ? 0 : 80, flex: isMobile ? '1 1 0' : 'none' }}>
             <div style={{
-              fontFamily: font, fontSize: 64, lineHeight: 1, color,
+              fontFamily: font, fontSize: isMobile ? 38 : 64, lineHeight: 1, color,
               fontVariantNumeric: 'tabular-nums', fontWeight: 400,
             }}>{String(n).padStart(2, '0')}</div>
             <div style={{
-              fontFamily: labelFont, fontSize: 11, letterSpacing: '0.32em',
-              textTransform: 'uppercase', color: accent, marginTop: 12,
+              fontFamily: labelFont, fontSize: isMobile ? 10 : 11, letterSpacing: '0.28em',
+              textTransform: 'uppercase', color: accent, marginTop: isMobile ? 8 : 12,
             }}>{label}</div>
           </div>
           {i < 3 && (
-            <div style={{ fontFamily: font, fontSize: 48, color: accent, opacity: 0.5, lineHeight: 1.3 }}>
+            <div style={{ fontFamily: font, fontSize: isMobile ? 28 : 48, color: accent, opacity: 0.5, lineHeight: 1.3 }}>
               {separator}
             </div>
           )}
@@ -105,6 +127,7 @@ function CountdownBlock({ font, labelFont, color, accent, separator = '·' }) {
 // Renders inputs styled by the variation's `theme` prop (accent, ink, rule).
 // ─────────────────────────────────────────────────────────────
 function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send our reply' }) {
+  const isMobile = useIsMobile();
   const [form, setForm] = React.useState({
     names: '', email: '', attending: 'yes', guests: 2, diet: '', song: '',
     eventType: 'full', isVegan: false, mealChoice: '',
@@ -313,7 +336,7 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
       )}
 
       {/* Guests + Dietary */}
-      <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: 32 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '120px 1fr', gap: isMobile ? 26 : 32 }}>
         <div>
           <span style={labelStyle}>Guests</span>
           <input style={inputStyle} type="number" min="1" max="6" disabled={disabled}
@@ -484,7 +507,8 @@ function HeroCarousel({ items, theme, width = 640, height = 380, interval = 4200
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
       style={{
-        width, height, position: 'relative', overflow: 'hidden',
+        width: '100%', maxWidth: width, aspectRatio: `${width} / ${height}`,
+        position: 'relative', overflow: 'hidden',
         background: theme.paper,
         boxShadow: frame === 'shadow' ? `0 12px 40px rgba(0,0,0,.08), 0 2px 6px rgba(0,0,0,.04)` : 'none',
         border: `1px solid ${theme.rule}`,
@@ -556,7 +580,7 @@ const CAROUSEL_ITEMS = [
 ];
 
 export {
-  WEDDING_DATE, WEDDING_FONTS, useCountdown, usePalette, PALETTES,
+  WEDDING_DATE, WEDDING_FONTS, useCountdown, useIsMobile, usePalette, PALETTES,
   CountdownBlock, RSVPForm, PhotoPlaceholder, HeroCarousel,
   SCHEDULE, FAQS, DRESS_CODE, MENU, CAROUSEL_ITEMS,
 };

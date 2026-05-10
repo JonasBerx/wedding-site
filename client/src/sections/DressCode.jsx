@@ -1,11 +1,15 @@
 // sections/DressCode.jsx — what to wear.
 import { SectionHead } from './helpers';
-import { DRESS_CODE } from '../shared';
+import { DRESS_CODE, useIsMobile } from '../shared';
 import { Lavender } from '../botanicals';
 
 function DressCodeSection({ t, fonts }) {
+  const isMobile = useIsMobile();
   return (
-    <section style={{ padding: '90px 120px 100px', textAlign: 'center', position: 'relative' }}>
+    <section style={{
+      padding: isMobile ? '60px 20px 70px' : '90px 120px 100px',
+      textAlign: 'center', position: 'relative',
+    }}>
       <SectionHead t={t} fonts={fonts}
         kicker="and what to wear?" title="Garden formal, mostly"
         subtitle="Linen, soft tones, comfortable shoes. Dress as if you were in a Sunday painting." align="center" />

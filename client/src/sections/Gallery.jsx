@@ -1,6 +1,6 @@
 // sections/Gallery.jsx — scattered polaroids.
 import { SectionHead } from './helpers';
-import { PhotoPlaceholder } from '../shared';
+import { PhotoPlaceholder, useIsMobile } from '../shared';
 
 const GALLERY_LAYOUT = [
   { x: 30,  y: 20,  w: 220, h: 260, r: -4, l: 'first hike, 2021' },
@@ -14,27 +14,49 @@ const GALLERY_LAYOUT = [
 ];
 
 function GallerySection({ t, fonts }) {
+  const isMobile = useIsMobile();
   return (
-    <section style={{ padding: '90px 80px 110px', background: t.paper, borderTop: `1px solid ${t.rule}`, borderBottom: `1px solid ${t.rule}` }}>
-      <div style={{ textAlign: 'center', marginBottom: 56 }}>
+    <section style={{
+      padding: isMobile ? '60px 20px 80px' : '90px 80px 110px',
+      background: t.paper,
+      borderTop: `1px solid ${t.rule}`, borderBottom: `1px solid ${t.rule}`,
+    }}>
+      <div style={{ textAlign: 'center', marginBottom: isMobile ? 36 : 56 }}>
         <SectionHead t={t} fonts={fonts}
           kicker="our pile of photos" title="Look at us look at each other"
           subtitle="A scrappy collection so far. After August this becomes a proper album — and we'd love your photos in it." align="center" />
       </div>
 
-      <div style={{ position: 'relative', height: 680, maxWidth: 1020, margin: '0 auto' }}>
-        {GALLERY_LAYOUT.map((p, i) => (
-          <div key={i} style={{ position: 'absolute', left: p.x, top: p.y }}>
-            <PhotoPlaceholder width={p.w} height={p.h} label={p.l} theme={t} rotate={p.r} />
-          </div>
-        ))}
-      </div>
+      {isMobile ? (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(2, 1fr)',
+          gap: 14, maxWidth: 460, margin: '0 auto',
+        }}>
+          {GALLERY_LAYOUT.map((p, i) => (
+            <div key={i} style={{ display: 'flex', justifyContent: 'center' }}>
+              <PhotoPlaceholder
+                width="100%" height={170}
+                label={p.l} theme={t} rotate={p.r * 0.5}
+              />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div style={{ position: 'relative', height: 680, maxWidth: 1020, margin: '0 auto' }}>
+          {GALLERY_LAYOUT.map((p, i) => (
+            <div key={i} style={{ position: 'absolute', left: p.x, top: p.y }}>
+              <PhotoPlaceholder width={p.w} height={p.h} label={p.l} theme={t} rotate={p.r} />
+            </div>
+          ))}
+        </div>
+      )}
 
       <div style={{
-        textAlign: 'center', marginTop: 48,
-        fontFamily: fonts.script, fontSize: 30, color: t.accent,
+        textAlign: 'center', marginTop: isMobile ? 32 : 48,
+        fontFamily: fonts.script, fontSize: isMobile ? 24 : 30, color: t.accent,
         transform: 'rotate(-1.5deg)', display: 'flex',
-        justifyContent: 'center', gap: 12,
+        justifyContent: 'center', gap: 12, flexWrap: 'wrap',
       }}>
         add yours: <span style={{ fontStyle: 'italic' }}>#JonasAndDragana</span>
       </div>

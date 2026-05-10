@@ -1,21 +1,28 @@
 // sections/Rsvp.jsx — reply form.
 import { SectionHead } from './helpers';
-import { RSVPForm } from '../shared';
+import { RSVPForm, useIsMobile } from '../shared';
 
 function RsvpSection({ t, fonts }) {
+  const isMobile = useIsMobile();
   return (
-    <section style={{ padding: '90px 120px 110px', background: t.paper, borderTop: `1px solid ${t.rule}`, borderBottom: `1px solid ${t.rule}`, position: 'relative' }}>
+    <section style={{
+      padding: isMobile ? '60px 20px 80px' : '90px 120px 110px',
+      background: t.paper,
+      borderTop: `1px solid ${t.rule}`, borderBottom: `1px solid ${t.rule}`,
+      position: 'relative',
+    }}>
       <div style={{ maxWidth: 600, margin: '0 auto' }}>
-        <div style={{ textAlign: 'center', marginBottom: 50 }}>
+        <div style={{ textAlign: 'center', marginBottom: isMobile ? 32 : 50 }}>
           <SectionHead t={t} fonts={fonts}
             kicker="please &amp; thank you" title="Tell us you're coming"
             subtitle="By the first of June, if you can. The pétanque set in your honour is on standby." align="center" />
         </div>
 
         <div style={{
-          background: t.bg, padding: '44px 40px',
+          background: t.bg,
+          padding: isMobile ? '28px 20px' : '44px 40px',
           border: `1px solid ${t.rule}`,
-          transform: 'rotate(-0.4deg)',
+          transform: isMobile ? 'none' : 'rotate(-0.4deg)',
           boxShadow: `7px 7px 0 ${t.accentSoft}38`,
         }}>
           <RSVPForm theme={t} headlineFont={fonts.head}
