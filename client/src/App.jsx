@@ -1,5 +1,5 @@
 import React from 'react';
-import { VariationB } from './variation-b';
+import { VariationB } from './WeddingSite';
 
 export default function App() {
   const [mode, setMode] = React.useState('day');
