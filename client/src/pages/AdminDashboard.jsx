@@ -112,6 +112,7 @@ export default function AdminDashboard() {
   const [registry, setRegistry] = React.useState([]);
   const [newTitle, setNewTitle] = React.useState('');
   const [newDesc, setNewDesc] = React.useState('');
+  const [newUnclaimable, setNewUnclaimable] = React.useState(false);
   const [addError, setAddError] = React.useState('');
   const [toast, setToast] = React.useState('');
   const [pendingDelete, setPendingDelete] = React.useState(null); // null | item
@@ -164,7 +165,11 @@ export default function AdminDashboard() {
     setAddError('');
     const res = await apiFetch('/api/admin/registry', null, {
       method: 'POST',
-      body: JSON.stringify({ title: newTitle, description: newDesc || null }),
+      body: JSON.stringify({
+        title: newTitle,
+        description: newDesc || null,
+        unclaimable: !!newUnclaimable,
+      }),
     });
     if (!res.ok) {
       try { setAddError((await res.json()).error || 'Failed to add gift.'); }
@@ -173,6 +178,7 @@ export default function AdminDashboard() {
     }
     setNewTitle('');
     setNewDesc('');
+    setNewUnclaimable(false);
     await loadData();
   }
 
@@ -385,6 +391,14 @@ export default function AdminDashboard() {
                 <label style={labelStyle}>Description (optional)</label>
                 <input value={newDesc} onChange={e => setNewDesc(e.target.value)} style={inputStyle} />
               </div>
+              <label style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                fontFamily: BODY_FONT, fontSize: 14, color: INK,
+              }}>
+                <input type="checkbox" checked={newUnclaimable}
+                  onChange={e => setNewUnclaimable(e.target.checked)} />
+                Universal (no claim)
+              </label>
               <button type="submit" style={primaryButton}>Add gift</button>
             </form>
             {addError && <div style={{ color: ACCENT, fontSize: 14, marginBottom: 16 }}>{addError}</div>}
@@ -393,7 +407,7 @@ export default function AdminDashboard() {
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr>
-                    {['Title','Description','Claimed by',''].map(h => (
+                    {['Title','Description','Universal','Claimed by',''].map(h => (
                       <th key={h} style={thStyle}>{h}</th>
                     ))}
                   </tr>
@@ -403,6 +417,7 @@ export default function AdminDashboard() {
                     <tr key={item.id}>
                       <td style={{ ...tdStyle, fontFamily: HEAD_FONT, fontStyle: 'italic', fontSize: 17 }}>{item.title}</td>
                       <td style={{ ...tdStyle, color: INK_SOFT }}>{item.description || '—'}</td>
+                      <td style={tdStyle}>{item.unclaimable === 1 ? 'Yes' : '—'}</td>
                       <td style={tdStyle}>{item.claimer_name || '—'}</td>
                       <td style={{ ...tdStyle, width: 100 }}>
                         <button
