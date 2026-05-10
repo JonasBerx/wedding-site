@@ -13,6 +13,18 @@ function initDb(path = 'rsvps.db') {
   }
 
   db.exec(`
+    CREATE TABLE IF NOT EXISTS menu_items (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      course      TEXT NOT NULL CHECK (course IN ('first','main')),
+      name        TEXT NOT NULL,
+      note        TEXT,
+      is_vegan    INTEGER NOT NULL DEFAULT 0,
+      sort_order  INTEGER NOT NULL DEFAULT 0,
+      created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  db.exec(`
     CREATE TABLE IF NOT EXISTS rsvps (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
@@ -23,18 +35,6 @@ function initDb(path = 'rsvps.db') {
       main_course_id INTEGER REFERENCES menu_items(id),
       dietary_restrictions TEXT,
       submitted_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now'))
-    )
-  `);
-
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS menu_items (
-      id          INTEGER PRIMARY KEY AUTOINCREMENT,
-      course      TEXT NOT NULL CHECK (course IN ('first','main')),
-      name        TEXT NOT NULL,
-      note        TEXT,
-      is_vegan    INTEGER NOT NULL DEFAULT 0,
-      sort_order  INTEGER NOT NULL DEFAULT 0,
-      created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
 
@@ -117,13 +117,21 @@ function initDb(path = 'rsvps.db') {
         'SELECT COUNT(*) AS n FROM rsvps WHERE first_course_id = :id OR main_course_id = :id'
       ).get({ id }).n;
       if (refs > 0) return { changes: 0, blocked: true };
-      const result = db.prepare('DELETE FROM menu_items WHERE id = :id').run({ id });
-      // Compact sort_order for the remaining items in the same course.
-      const remaining = db.prepare(
-        'SELECT id FROM menu_items WHERE course = :course ORDER BY sort_order ASC'
-      ).all({ course: item.course });
-      const upd = db.prepare('UPDATE menu_items SET sort_order = :so WHERE id = :id');
-      remaining.forEach((r, idx) => upd.run({ so: idx, id: r.id }));
+      let result;
+      db.exec('BEGIN');
+      try {
+        result = db.prepare('DELETE FROM menu_items WHERE id = :id').run({ id });
+        // Compact sort_order for the remaining items in the same course.
+        const remaining = db.prepare(
+          'SELECT id FROM menu_items WHERE course = :course ORDER BY sort_order ASC'
+        ).all({ course: item.course });
+        const upd = db.prepare('UPDATE menu_items SET sort_order = :so WHERE id = :id');
+        remaining.forEach((r, idx) => upd.run({ so: idx, id: r.id }));
+        db.exec('COMMIT');
+      } catch (err) {
+        db.exec('ROLLBACK');
+        throw err;
+      }
       return { changes: result.changes, blocked: false };
     },
 
@@ -134,8 +142,15 @@ function initDb(path = 'rsvps.db') {
       const sameSet = existing.length === orderedIds.length
         && existing.every(id => orderedIds.includes(id));
       if (!sameSet) return { ok: false };
-      const upd = db.prepare('UPDATE menu_items SET sort_order = :so WHERE id = :id AND course = :course');
-      orderedIds.forEach((id, idx) => upd.run({ so: idx, id, course }));
+      db.exec('BEGIN');
+      try {
+        const upd = db.prepare('UPDATE menu_items SET sort_order = :so WHERE id = :id AND course = :course');
+        orderedIds.forEach((id, idx) => upd.run({ so: idx, id, course }));
+        db.exec('COMMIT');
+      } catch (err) {
+        db.exec('ROLLBACK');
+        throw err;
+      }
       return { ok: true };
     },
 
