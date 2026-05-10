@@ -81,7 +81,7 @@ function RegistrySection({ t, fonts }) {
     marginBottom: 24,
   };
 
-  const showBothKickers = universal.length > 0 && (claimablePreview.length > 0 || allClaimed);
+  const showBothKickers = universal.length > 0 && claimablePreview.length > 0;
 
   return (
     <section style={{ padding: isMobile ? '60px 20px 70px' : '90px 120px 100px' }}>
