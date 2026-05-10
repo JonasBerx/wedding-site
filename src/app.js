@@ -15,6 +15,10 @@ function createApp(db) {
   app.use('/api/admin', createAdminRouter(db));
   app.use('/api/registry', createRegistryRouter(db));
 
+  app.use('/api', (req, res) => {
+    res.status(404).json({ error: 'Not found' });
+  });
+
   const distDir = path.join(__dirname, '../dist');
   app.use(express.static(distDir));
   app.get('*', (req, res) => {

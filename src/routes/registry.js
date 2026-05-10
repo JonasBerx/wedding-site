@@ -4,7 +4,7 @@ function createRegistryRouter(db) {
   const router = express.Router();
 
   router.get('/validate', (req, res) => {
-    const { email } = req.query;
+    const email = (req.query.email || '').toLowerCase().trim();
     if (!email) return res.status(400).json({ error: 'email is required' });
     const rsvp = db.getRsvpByEmail(email);
     if (!rsvp) return res.status(404).json({ error: 'No RSVP found for that email' });
@@ -23,7 +23,8 @@ function createRegistryRouter(db) {
   });
 
   router.post('/claim', (req, res) => {
-    const { item_id, email } = req.body;
+    const { item_id } = req.body;
+    const email = (req.body.email || '').toLowerCase().trim();
     if (!item_id || !email) return res.status(400).json({ error: 'item_id and email are required' });
 
     const rsvp = db.getRsvpByEmail(email);
@@ -42,7 +43,8 @@ function createRegistryRouter(db) {
   });
 
   router.post('/unclaim', (req, res) => {
-    const { item_id, email } = req.body;
+    const { item_id } = req.body;
+    const email = (req.body.email || '').toLowerCase().trim();
     if (!item_id || !email) return res.status(400).json({ error: 'item_id and email are required' });
 
     const rsvp = db.getRsvpByEmail(email);

@@ -64,7 +64,12 @@ export default function AdminDashboard() {
       body: JSON.stringify({ title: newTitle, description: newDesc || null }),
     });
     if (!res.ok) {
-      setAddError('Failed to add gift. Title is required.');
+      try {
+        const data = await res.json();
+        setAddError(data.error || 'Failed to add gift.');
+      } catch {
+        setAddError('Failed to add gift.');
+      }
       return;
     }
     setNewTitle('');
