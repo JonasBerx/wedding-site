@@ -272,3 +272,120 @@ describe('GET /api/rsvp', () => {
     expect(res.body.rsvp.email).toBe('alice@example.com');
   });
 });
+
+describe('POST /api/rsvp upsert + deadline + release', () => {
+  let app, db;
+  beforeEach(() => {
+    delete process.env.RSVP_DEADLINE;
+    db = initDb(':memory:');
+    app = createApp(db);
+  });
+  afterEach(() => {
+    db.close();
+    delete process.env.RSVP_DEADLINE;
+  });
+
+  test('first POST inserts and returns was_update:false', async () => {
+    const res = await request(app).post('/api/rsvp').send({
+      name: 'Alice', email: 'alice@example.com', attending: true,
+      event_type: 'ceremony_party',
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.was_update).toBe(false);
+    expect(res.body).not.toHaveProperty('released_gift');
+  });
+
+  test('second POST with same email updates and returns was_update:true', async () => {
+    await request(app).post('/api/rsvp').send({
+      name: 'Alice', email: 'alice@example.com', attending: true,
+      event_type: 'ceremony_party',
+    });
+    const res = await request(app).post('/api/rsvp').send({
+      name: 'Alice C', email: 'alice@example.com', attending: false,
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.was_update).toBe(true);
+    const stored = db.getRsvpByEmail('alice@example.com');
+    expect(stored.attending).toBe(0);
+    expect(stored.name).toBe('Alice C');
+  });
+
+  test('returns 409 deadline_passed when RSVP_DEADLINE in the past', async () => {
+    process.env.RSVP_DEADLINE = '2000-01-01T00:00:00Z';
+    const res = await request(app).post('/api/rsvp').send({
+      name: 'Alice', email: 'alice@example.com', attending: true,
+      event_type: 'ceremony_party',
+    });
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe('deadline_passed');
+    expect(db.getRsvpByEmail('alice@example.com')).toBeNull();
+  });
+
+  test('release: yes->no transition releases the registry claim', async () => {
+    db.insertRegistryItem({ title: 'Honeymoon fund' });
+    const item = db.getAllRegistryItems()[0];
+
+    await request(app).post('/api/rsvp').send({
+      name: 'Alice', email: 'alice@example.com', attending: true,
+      event_type: 'ceremony_party',
+    });
+    const rsvp = db.getRsvpByEmail('alice@example.com');
+    db.claimRegistryItem(item.id, rsvp.id);
+
+    const res = await request(app).post('/api/rsvp').send({
+      name: 'Alice', email: 'alice@example.com', attending: false,
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.released_gift).toEqual({ title: 'Honeymoon fund' });
+
+    const reread = db.getRegistryItemById(item.id);
+    expect(reread.claimed_by_rsvp_id).toBeNull();
+  });
+
+  test('release: yes->no with no claim does not include released_gift', async () => {
+    await request(app).post('/api/rsvp').send({
+      name: 'Alice', email: 'alice@example.com', attending: true,
+      event_type: 'ceremony_party',
+    });
+    const res = await request(app).post('/api/rsvp').send({
+      name: 'Alice', email: 'alice@example.com', attending: false,
+    });
+    expect(res.status).toBe(201);
+    expect(res.body).not.toHaveProperty('released_gift');
+  });
+
+  test('release: yes->yes (event_type change) does NOT release the claim', async () => {
+    db.insertRegistryItem({ title: 'Honeymoon fund' });
+    const item = db.getAllRegistryItems()[0];
+    const f = db.insertMenuItem({ course: 'first', name: 'Tomato' });
+    const m = db.insertMenuItem({ course: 'main',  name: 'Lamb' });
+
+    await request(app).post('/api/rsvp').send({
+      name: 'Alice', email: 'alice@example.com', attending: true,
+      event_type: 'full',
+      first_course_id: f.lastInsertRowid, main_course_id: m.lastInsertRowid,
+    });
+    const rsvp = db.getRsvpByEmail('alice@example.com');
+    db.claimRegistryItem(item.id, rsvp.id);
+
+    const res = await request(app).post('/api/rsvp').send({
+      name: 'Alice', email: 'alice@example.com', attending: true,
+      event_type: 'ceremony_party',
+    });
+    expect(res.status).toBe(201);
+    expect(res.body).not.toHaveProperty('released_gift');
+    expect(db.getRegistryItemById(item.id).claimed_by_rsvp_id).toBe(rsvp.id);
+  });
+
+  test('case-insensitive email upsert (Alice@... and alice@... become one row)', async () => {
+    await request(app).post('/api/rsvp').send({
+      name: 'Alice', email: 'Alice@Example.COM', attending: true,
+      event_type: 'ceremony_party',
+    });
+    const res = await request(app).post('/api/rsvp').send({
+      name: 'Alice C', email: 'alice@example.com', attending: false,
+    });
+    expect(res.body.was_update).toBe(true);
+    expect(db.getAllRsvps()).toHaveLength(1);
+  });
+});

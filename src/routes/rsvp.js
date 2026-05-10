@@ -33,6 +33,8 @@ function createRsvpRouter(db) {
   });
 
   router.post('/', (req, res) => {
+    if (deadlinePassed()) return res.status(409).json({ error: 'deadline_passed' });
+
     const { name, email, attending, event_type, first_course_id, main_course_id, dietary_restrictions } = req.body;
 
     const trimmedName  = typeof name  === 'string' ? name.trim()  : '';
@@ -70,8 +72,9 @@ function createRsvpRouter(db) {
       }
     }
 
+    let result;
     try {
-      db.insertRsvp({
+      result = db.upsertRsvp({
         name: trimmedName,
         email: trimmedEmail,
         attending: attending ? 1 : 0,
@@ -80,11 +83,27 @@ function createRsvpRouter(db) {
         main_course_id:  dbMainId,
         dietary_restrictions: dietary_restrictions || null,
       });
-      res.status(201).json({ message: 'RSVP received' });
     } catch (err) {
-      console.error('RSVP insert failed:', err);
-      res.status(500).json({ error: 'Failed to save RSVP' });
+      console.error('RSVP upsert failed:', err);
+      return res.status(500).json({ error: 'Failed to save RSVP' });
     }
+
+    let releasedGift = null;
+    if (result.was_update && result.prev_attending === 1 && !attending) {
+      try {
+        const claim = db.getClaimedItemByRsvpId(result.id);
+        if (claim) {
+          db.unclaimRegistryItem(claim.id);
+          releasedGift = { title: claim.title };
+        }
+      } catch (err) {
+        console.error('Auto-release of registry claim failed:', err);
+      }
+    }
+
+    const body = { message: 'RSVP received', was_update: result.was_update };
+    if (releasedGift) body.released_gift = releasedGift;
+    res.status(201).json(body);
   });
 
   return router;
