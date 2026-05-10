@@ -176,6 +176,10 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
       setUiState('deciding');
       return;
     }
+    if (form.attending === 'yes' && form.eventType === 'full' &&
+        (!form.firstCourseId || !form.mainCourseId)) {
+      return;
+    }
     setUiState('submitting');
     const body = {
       name: form.names,
@@ -447,22 +451,22 @@ function PhotoPlaceholder({ width = 220, height = 280, label = 'photo', theme, r
 
 const SCHEDULE = [
   { day: 'Saturday · 8 August', items: [
-    ['13:30', 'Guests welcomed', 'reception arrivals'],
+    ['13:30', 'Reception Guests welcomed', 'reception arrivals'],
     ['14:00', 'Ceremony', 'the heart of the day'],
     ['15:00', 'Reception', 'six bites &amp; drinks, until 17:00'],
     ['17:00', 'Dinner', 'first &amp; main course, until 20:00'],
     ['20:00', 'Evening guests arrive', 'the party widens'],
     ['21:00', 'Dessert buffet &amp; first dance', 'the floor opens'],
-    ['00:00', 'A special midnight snack', 'a quiet ritual at the witching hour'],
+    ['00:00', 'A special midnight snack', 'A true taste of Belgian culture'],
     ['01:00', 'And then we sleep', 'goodnight, with full hearts'],
   ]},
 ];
 
 const FAQS = [
-  ['Can we bring our children?', 'Yes — little ones are welcome at the ceremony and dinner. There will be a quiet room for naps and a few games in the courtyard.'],
-  ['Where should we stay?', 'A handful of lovely B&Bs are within ten minutes of the farmhouse. We\'ve gathered our favourites in the Travel section above.'],
-  ['What about the weather?', 'Belgian August is mild and green — expect 22–26°C in the afternoon, cool and breezy by evening. A light layer for after dinner is wise.'],
-  ['Is there parking on site?', 'Plenty — and a shuttle from the village square at 14:30 if you\'d rather not drive.'],
+  ['Can we bring our children?', 'No — Unless we explicitly mention it in the invite, we will keep this event adult only'],
+  ['Where should we stay?', 'There are plenty of hotels, B&B\'s available in the surrounding area. There will also be a taxi service available'],
+  ['What about the weather?', 'Belgian August is mild and green — expect 22–26°C in the afternoon, cool and breezy by evening. A light layer for after dinner is wise. (Rain is always possible.. its Belgium after all)'],
+  ['Is there parking on site?', 'Plenty — and there is a taxi service available!'],
   ['Can we contribute photos?', 'Please do. We\'ll have a shared album, and you\'re welcome to tag #JonasAndDragana.'],
   ['Plus-ones?', 'If your invitation names a plus-one, absolutely. Otherwise we\'re keeping the day intimate — we hope you understand.'],
 ];
