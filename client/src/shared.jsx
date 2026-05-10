@@ -269,7 +269,7 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
           const data = await res.json();
           if (data?.error === 'deadline_passed') {
             setReadOnly(true);
-            setUiState('idle');
+            setUiState('error');
             return;
           }
         } catch {}
@@ -364,7 +364,7 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
       {/* Email */}
       <div>
         <span style={labelStyle}>Email</span>
-        <input style={inputStyle} type="email" value={form.email} disabled={disabled}
+        <input style={inputStyle} type="email" value={form.email} disabled={submitting}
           onChange={(e) => setForm({ ...form, email: e.target.value })}
           onBlur={handleEmailBlur}
           placeholder="you@example.com" />

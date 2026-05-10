@@ -13,6 +13,10 @@ function publicShape(r) {
   return out;
 }
 
+// RSVP_DEADLINE — optional ISO-8601 timestamp env var. When set and in the
+// past, GET /api/rsvp returns deadline_passed:true and POST /api/rsvp
+// rejects with 409 deadline_passed. Set in Railway env to lock RSVPs after
+// the requested-by date (e.g. "2026-06-01T23:59:59Z"). Unset = no deadline.
 function deadlinePassed() {
   const v = process.env.RSVP_DEADLINE;
   if (!v) return false;
