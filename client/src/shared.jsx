@@ -292,6 +292,22 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
           We've noted your reply — we can't wait to share<br />
           this day with you in the woods.
         </div>
+        {releasedGift && (
+          <div style={{
+            marginTop: 18, fontFamily: bodyFont, fontSize: 15,
+            color: theme.inkSoft, fontStyle: 'italic',
+          }}>
+            We've also released your gift (<em>{releasedGift.title}</em>) so someone else can pick it up.
+          </div>
+        )}
+        <button type="button"
+          onClick={() => { setReleasedGift(null); setUiState('idle'); }}
+          style={{
+            marginTop: 28, background: 'transparent',
+            border: 'none', cursor: 'pointer', padding: 0,
+            fontFamily: labelFont, fontSize: 11, letterSpacing: '0.32em',
+            color: theme.label, textTransform: 'uppercase', opacity: 0.8,
+          }}>Edit again</button>
       </div>
     );
   }
@@ -309,7 +325,7 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
   const submitting = uiState === 'submitting';
   const fullDay = form.attending === 'yes' && form.eventType === 'full';
   const menuMissing = fullDay && (menu === null || menu.length === 0);
-  const disabled = submitting || menuMissing;
+  const disabled = submitting || menuMissing || readOnly;
 
   const RadioDot = ({ selected }) => (
     <span style={{
@@ -325,6 +341,17 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
 
   return (
     <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 26 }}>
+
+      {readOnly && (
+        <div style={{
+          padding: '14px 16px',
+          border: `1px solid ${theme.accent}`,
+          background: `${theme.accent}11`,
+          fontFamily: bodyFont, fontSize: 15, color: theme.ink, marginBottom: 8,
+        }}>
+          Replies are now closed — please contact us directly if you need a change.
+        </div>
+      )}
 
       {/* Names */}
       <div>
@@ -488,26 +515,28 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
       )}
 
       {/* Submit button */}
-      <button type="submit" disabled={disabled} style={{
-        marginTop: 12,
-        alignSelf: 'flex-start',
-        padding: '14px 36px',
-        background: theme.accent,
-        color: theme.paper,
-        border: 'none',
-        fontFamily: labelFont,
-        fontSize: 12,
-        letterSpacing: '0.32em',
-        textTransform: 'uppercase',
-        cursor: disabled ? 'default' : 'pointer',
-        borderRadius: 0,
-        opacity: disabled ? 0.6 : 1,
-        transition: 'background .2s, transform .2s, opacity .2s',
-      }}
-        onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.transform = 'translateY(-1px)'; }}
-        onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; }}>
-        {submitting ? 'Sending…' : ctaLabel}
-      </button>
+      {!readOnly && (
+        <button type="submit" disabled={disabled} style={{
+          marginTop: 12,
+          alignSelf: 'flex-start',
+          padding: '14px 36px',
+          background: theme.accent,
+          color: theme.paper,
+          border: 'none',
+          fontFamily: labelFont,
+          fontSize: 12,
+          letterSpacing: '0.32em',
+          textTransform: 'uppercase',
+          cursor: disabled ? 'default' : 'pointer',
+          borderRadius: 0,
+          opacity: disabled ? 0.6 : 1,
+          transition: 'background .2s, transform .2s, opacity .2s',
+        }}
+          onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.transform = 'translateY(-1px)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; }}>
+          {submitting ? 'Sending…' : ctaLabel}
+        </button>
+      )}
     </form>
   );
 }
