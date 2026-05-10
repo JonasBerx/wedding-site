@@ -59,7 +59,17 @@ function RegistrySection({ t, fonts }) {
 
   const universal = items.filter(i => i.unclaimable === 1);
   const claimable = items.filter(i => i.unclaimable !== 1);
-  const claimablePreview = claimable.filter(i => !i.claimed).slice(0, 3);
+  const claimablePreview = React.useMemo(() => {
+    const pool = claimable.filter(i => !i.claimed);
+    // Fisher-Yates shuffle, then take 3. Memoized on the items reference so
+    // the random pick stays stable across re-renders within a single load.
+    const shuffled = [...pool];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled.slice(0, 3);
+  }, [items]);
   const allClaimed = claimable.length > 0 && claimablePreview.length === 0;
 
   const tilts = [-1.4, 0.7, -0.5];
