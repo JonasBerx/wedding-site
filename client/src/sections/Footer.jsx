@@ -1,4 +1,5 @@
 // sections/Footer.jsx — closing mark.
+import { Link } from 'react-router-dom';
 import { OliveBranch } from '../botanicals';
 
 function FooterSection({ t, fonts }) {
@@ -18,6 +19,14 @@ function FooterSection({ t, fonts }) {
         marginTop: 32, fontFamily: fonts.label, fontSize: 11, letterSpacing: '0.5em',
         color: t.label, textTransform: 'uppercase',
       }}>VIII · VIII · MMXXVI</div>
+      <div style={{ marginTop: 28 }}>
+        <Link to="/registry" style={{
+          fontFamily: fonts.label, fontSize: 11, letterSpacing: '0.4em',
+          color: t.label, textTransform: 'uppercase', textDecoration: 'none', opacity: 0.7,
+        }}>
+          Gift Registry
+        </Link>
+      </div>
     </footer>
   );
 }
