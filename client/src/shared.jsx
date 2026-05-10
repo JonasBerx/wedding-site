@@ -424,16 +424,6 @@ const FAQS = [
   ['Plus-ones?', 'If your invitation names a plus-one, absolutely. Otherwise we\'re keeping the day intimate — we hope you understand.'],
 ];
 
-const REGISTRY = [
-  { title: 'Honeymoon fund', body: 'A slow drive through the Dolomites — your contribution might be the best espresso of the trip, or one perfect dinner with a view.' },
-  { title: 'A small charity we love', body: 'The local woodland conservancy that\'s been keeping the hills around De Bosch alive for generations.' },
-  { title: 'A few things for the home', body: 'A short, hand-picked list at our favourite kitchen shop — linked in your invitation card.' },
-  { title: 'A bottle for the cellar', body: 'Help us build a small wine collection — one bottle, one memory, one anniversary at a time.' },
-  { title: 'An experience together', body: 'Cooking class, hot-air balloon, a weekend in the Ardennes — anything that gives us a story to tell.' },
-  { title: 'A garden contribution', body: 'A tree, a bench, a stone for the path — something that puts down roots in our first home.' },
-  { title: 'Just your presence', body: 'Truly, this is more than enough. Your travel and your time are gifts we won\'t forget.' },
-];
-
 const DRESS_CODE = {
   title: 'Garden formal',
   notes: [
@@ -530,5 +520,5 @@ const CAROUSEL_ITEMS = [
 export {
   WEDDING_DATE, WEDDING_FONTS, useCountdown, usePalette, PALETTES,
   CountdownBlock, RSVPForm, PhotoPlaceholder, HeroCarousel,
-  SCHEDULE, FAQS, REGISTRY, DRESS_CODE, MENU, CAROUSEL_ITEMS,
+  SCHEDULE, FAQS, DRESS_CODE, MENU, CAROUSEL_ITEMS,
 };
