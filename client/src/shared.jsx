@@ -436,20 +436,6 @@ function PhotoPlaceholder({ width = 220, height = 280, label = 'photo', theme, r
   );
 }
 
-// Content data — shared between both variations so they stay in sync.
-const MENU = {
-  first: [
-    { id: 'tomato-burrata', name: 'Heirloom tomato &amp; burrata', note: 'with basil oil &amp; aged balsamic' },
-    { id: 'beet-chevre', name: 'Roasted beet &amp; goat cheese', note: 'honey, walnut, dressed leaves' },
-    { id: 'trout', name: 'Smoked trout, pickled fennel', note: 'crème fraîche, dill, rye toast' },
-  ],
-  main: [
-    { id: 'lamb', name: 'Slow-braised lamb shoulder', note: 'rosemary jus, summer vegetables' },
-    { id: 'seabass', name: 'Pan-seared sea bass', note: 'fennel, lemon butter, samphire' },
-    { id: 'mushroom-risotto', name: 'Wild mushroom risotto', note: 'truffle, parmesan — vegetarian' },
-  ],
-};
-
 const SCHEDULE = [
   { day: 'Saturday · 8 August', items: [
     ['13:30', 'Guests welcomed', 'reception arrivals'],
@@ -582,5 +568,5 @@ const CAROUSEL_ITEMS = [
 export {
   WEDDING_DATE, WEDDING_FONTS, useCountdown, useIsMobile, usePalette, PALETTES,
   CountdownBlock, RSVPForm, PhotoPlaceholder, HeroCarousel,
-  SCHEDULE, FAQS, DRESS_CODE, MENU, CAROUSEL_ITEMS,
+  SCHEDULE, FAQS, DRESS_CODE, CAROUSEL_ITEMS,
 };
