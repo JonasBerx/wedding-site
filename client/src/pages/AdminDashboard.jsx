@@ -71,6 +71,9 @@ export default function AdminDashboard() {
   const [addError, setAddError] = React.useState('');
   const [toast, setToast] = React.useState('');
   const [pendingDelete, setPendingDelete] = React.useState(null); // null | item
+  const [menu, setMenu] = React.useState([]);
+  const [pendingMenuDelete, setPendingMenuDelete] = React.useState(null);
+  const [newMenu, setNewMenu] = React.useState({ course: 'first', name: '', note: '', is_vegan: false });
 
   async function apiFetch(path, creds, options = {}) {
     return fetch(path, {
@@ -84,9 +87,10 @@ export default function AdminDashboard() {
   }
 
   async function loadData(creds) {
-    const [rsvpsRes, regRes] = await Promise.all([
+    const [rsvpsRes, regRes, menuRes] = await Promise.all([
       apiFetch('/api/admin/rsvps', creds),
       apiFetch('/api/admin/registry', creds),
+      apiFetch('/api/admin/menu', creds),
     ]);
     if (rsvpsRes.status === 401) {
       setAuth(null);
@@ -95,6 +99,7 @@ export default function AdminDashboard() {
     }
     setRsvps(await rsvpsRes.json());
     setRegistry(await regRes.json());
+    setMenu(await menuRes.json());
   }
 
   async function handleLogin(e) {
@@ -138,6 +143,40 @@ export default function AdminDashboard() {
       setToast('Could not delete the gift.');
       return;
     }
+    await loadData();
+  }
+
+  async function handleMenuAdd(e) {
+    e.preventDefault();
+    if (!newMenu.name.trim()) return;
+    const res = await apiFetch('/api/admin/menu', null, {
+      method: 'POST',
+      body: JSON.stringify({
+        course: newMenu.course,
+        name: newMenu.name.trim(),
+        note: newMenu.note.trim() || null,
+        is_vegan: !!newMenu.is_vegan,
+      }),
+    });
+    if (!res.ok) { setToast('Could not add menu item.'); return; }
+    setNewMenu({ course: newMenu.course, name: '', note: '', is_vegan: false });
+    await loadData();
+  }
+
+  async function handleMenuToggleVegan(item) {
+    const res = await apiFetch(`/api/admin/menu/${item.id}`, null, {
+      method: 'PATCH',
+      body: JSON.stringify({ is_vegan: !item.is_vegan }),
+    });
+    if (!res.ok) { setToast('Could not update item.'); return; }
+    await loadData();
+  }
+
+  async function performMenuDelete(item) {
+    const res = await apiFetch(`/api/admin/menu/${item.id}`, null, { method: 'DELETE' });
+    setPendingMenuDelete(null);
+    if (res.status === 409) { setToast('Cannot delete — at least one RSVP picked this dish.'); return; }
+    if (!res.ok) { setToast('Could not delete the item.'); return; }
     await loadData();
   }
 
@@ -204,8 +243,9 @@ export default function AdminDashboard() {
 
         <div style={{ borderBottom: `1px solid ${RULE}`, marginBottom: 28, display: 'flex', gap: 24, flexWrap: 'wrap' }}>
           {[
-            { key: 'rsvps', label: `RSVPS · ${rsvps.length}` },
+            { key: 'rsvps',    label: `RSVPS · ${rsvps.length}` },
             { key: 'registry', label: `REGISTRY · ${registry.length}` },
+            { key: 'menu',     label: `MENU · ${menu.length}` },
           ].map(({ key, label }) => (
             <button
               key={key}
@@ -319,6 +359,109 @@ export default function AdminDashboard() {
             </div>
           </>
         )}
+
+        {tab === 'menu' && (
+          <>
+            <form
+              onSubmit={handleMenuAdd}
+              style={{
+                border: `1px solid ${RULE}`, padding: 24, marginBottom: 24,
+                display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap',
+              }}
+            >
+              <div style={{ flex: '0 0 120px' }}>
+                <label style={labelStyle}>Course</label>
+                <select
+                  value={newMenu.course}
+                  onChange={e => setNewMenu({ ...newMenu, course: e.target.value })}
+                  style={inputStyle}
+                >
+                  <option value="first">First</option>
+                  <option value="main">Main</option>
+                </select>
+              </div>
+              <div style={{ flex: '1 1 200px' }}>
+                <label style={labelStyle}>Name</label>
+                <input value={newMenu.name} onChange={e => setNewMenu({ ...newMenu, name: e.target.value })} required style={inputStyle} />
+              </div>
+              <div style={{ flex: '2 1 240px' }}>
+                <label style={labelStyle}>Note (optional)</label>
+                <input value={newMenu.note} onChange={e => setNewMenu({ ...newMenu, note: e.target.value })} style={inputStyle} />
+              </div>
+              <label style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                fontFamily: BODY_FONT, fontSize: 14, color: INK,
+              }}>
+                <input type="checkbox" checked={newMenu.is_vegan}
+                  onChange={e => setNewMenu({ ...newMenu, is_vegan: e.target.checked })} />
+                Vegan
+              </label>
+              <button type="submit" style={primaryButton}>Add dish</button>
+            </form>
+
+            {['first', 'main'].map(course => {
+              const list = menu.filter(i => i.course === course);
+              return (
+                <div key={course} style={{ marginBottom: 24 }}>
+                  <div style={{
+                    fontFamily: LABEL_FONT, fontSize: 11, letterSpacing: '0.32em',
+                    textTransform: 'uppercase', color: LABEL, marginBottom: 8,
+                  }}>{course} course · {list.length}</div>
+                  <div style={{ border: `1px solid ${RULE}` }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr>
+                          {['Name','Note','Vegan','RSVPs',''].map(h => (
+                            <th key={h} style={thStyle}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {list.map(item => (
+                          <tr key={item.id}>
+                            <td style={{ ...tdStyle, fontFamily: HEAD_FONT, fontStyle: 'italic', fontSize: 17 }}>{item.name}</td>
+                            <td style={{ ...tdStyle, color: INK_SOFT }}>{item.note || '—'}</td>
+                            <td style={tdStyle}>
+                              <button
+                                type="button"
+                                onClick={() => handleMenuToggleVegan(item)}
+                                style={{
+                                  ...outlineButton,
+                                  background: item.is_vegan ? ACCENT : 'transparent',
+                                  color:      item.is_vegan ? PAPER  : INK,
+                                  borderColor: item.is_vegan ? ACCENT : INK,
+                                }}
+                              >{item.is_vegan ? 'Vegan' : 'Mark vegan'}</button>
+                            </td>
+                            <td style={tdStyle}>{item.referenced_count}</td>
+                            <td style={{ ...tdStyle, width: 100 }}>
+                              <button
+                                onClick={() => setPendingMenuDelete(item)}
+                                disabled={item.referenced_count > 0}
+                                title={item.referenced_count > 0 ? 'An RSVP picked this' : 'Delete dish'}
+                                style={{
+                                  ...outlineButton,
+                                  cursor: item.referenced_count > 0 ? 'not-allowed' : 'pointer',
+                                  opacity: item.referenced_count > 0 ? 0.4 : 1,
+                                }}
+                              >Delete</button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {list.length === 0 && (
+                      <div style={{
+                        padding: '24px', textAlign: 'center',
+                        fontFamily: HEAD_FONT, fontSize: 16, fontStyle: 'italic', color: LABEL,
+                      }}>No {course} courses yet.</div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </>
+        )}
       </div>
 
       <ConfirmModal
@@ -329,6 +472,15 @@ export default function AdminDashboard() {
         destructive={true}
         onConfirm={() => performDelete(pendingDelete)}
         onCancel={() => setPendingDelete(null)}
+      />
+      <ConfirmModal
+        open={!!pendingMenuDelete}
+        title="Delete this dish?"
+        body={pendingMenuDelete?.name}
+        confirmLabel="Delete"
+        destructive={true}
+        onConfirm={() => performMenuDelete(pendingMenuDelete)}
+        onCancel={() => setPendingMenuDelete(null)}
       />
     </div>
   );
