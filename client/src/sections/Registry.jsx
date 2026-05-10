@@ -52,17 +52,12 @@ function RegistrySection({ t, fonts }) {
     return () => { cancelled = true; };
   }, []);
 
-  if (items === null) {
-    return <section style={{ padding: isMobile ? '60px 20px 70px' : '90px 120px 100px', minHeight: 360 }} />;
-  }
-  if (items.length === 0) return null;
-
-  const universal = items.filter(i => i.unclaimable === 1);
-  const claimable = items.filter(i => i.unclaimable !== 1);
+  // Fisher-Yates shuffle of unclaimed claimable items, memoised on the items
+  // reference so the random pick stays stable across re-renders within a load.
+  // Placed BEFORE early returns to satisfy the Rules of Hooks.
   const claimablePreview = React.useMemo(() => {
-    const pool = claimable.filter(i => !i.claimed);
-    // Fisher-Yates shuffle, then take 3. Memoized on the items reference so
-    // the random pick stays stable across re-renders within a single load.
+    if (!items) return [];
+    const pool = items.filter(i => i.unclaimable !== 1 && !i.claimed);
     const shuffled = [...pool];
     for (let i = shuffled.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
@@ -70,6 +65,14 @@ function RegistrySection({ t, fonts }) {
     }
     return shuffled.slice(0, 3);
   }, [items]);
+
+  if (items === null) {
+    return <section style={{ padding: isMobile ? '60px 20px 70px' : '90px 120px 100px', minHeight: 360 }} />;
+  }
+  if (items.length === 0) return null;
+
+  const universal = items.filter(i => i.unclaimable === 1);
+  const claimable = items.filter(i => i.unclaimable !== 1);
   const allClaimed = claimable.length > 0 && claimablePreview.length === 0;
 
   const tilts = [-1.4, 0.7, -0.5];
