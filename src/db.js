@@ -3,12 +3,15 @@ const { DatabaseSync } = require('node:sqlite');
 function initDb(path = 'rsvps.db') {
   const db = new DatabaseSync(path);
 
-  // ── rsvps: drop the old shape (is_vegan / meal_preference) and recreate.
-  // The site has no real RSVPs yet; this is a destructive reset by design.
+  // ── rsvps: drop the old shape and recreate. The site has no real RSVPs
+  // yet; this is a destructive reset by design. The guard now also requires
+  // `updated_at` (proxy for the editable-RSVPs schema) and a UNIQUE index on
+  // email so upserts work.
   const rsvpCols = db.prepare("PRAGMA table_info(rsvps)").all().map(c => c.name);
   const hasOldShape = rsvpCols.includes('is_vegan') || rsvpCols.includes('meal_preference');
   const hasNewShape = rsvpCols.includes('first_course_id') && rsvpCols.includes('main_course_id');
-  if (hasOldShape || (rsvpCols.length > 0 && !hasNewShape)) {
+  const hasUpdatedAt = rsvpCols.includes('updated_at');
+  if (hasOldShape || (rsvpCols.length > 0 && (!hasNewShape || !hasUpdatedAt))) {
     db.exec('DROP TABLE rsvps');
   }
 
@@ -28,13 +31,14 @@ function initDb(path = 'rsvps.db') {
     CREATE TABLE IF NOT EXISTS rsvps (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
-      email TEXT NOT NULL,
+      email TEXT NOT NULL UNIQUE,
       attending INTEGER NOT NULL,
       event_type TEXT,
       first_course_id INTEGER REFERENCES menu_items(id),
       main_course_id INTEGER REFERENCES menu_items(id),
       dietary_restrictions TEXT,
-      submitted_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now'))
+      submitted_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')),
+      updated_at TEXT
     )
   `);
 
@@ -56,6 +60,36 @@ function initDb(path = 'rsvps.db') {
       `).run({ name, email, attending, event_type, first_course_id, main_course_id, dietary_restrictions });
     },
 
+    upsertRsvp({ name, email, attending, event_type = null, first_course_id = null, main_course_id = null, dietary_restrictions = null }) {
+      const normEmail = String(email || '').trim().toLowerCase();
+      const existing = db.prepare('SELECT id, attending FROM rsvps WHERE email = :email').get({ email: normEmail });
+      if (existing) {
+        db.prepare(`
+          UPDATE rsvps SET
+            name = :name,
+            attending = :attending,
+            event_type = :event_type,
+            first_course_id = :first_course_id,
+            main_course_id = :main_course_id,
+            dietary_restrictions = :dietary_restrictions,
+            updated_at = strftime('%Y-%m-%dT%H:%M:%f','now')
+          WHERE id = :id
+        `).run({
+          id: existing.id, name, attending,
+          event_type, first_course_id, main_course_id, dietary_restrictions,
+        });
+        return { id: existing.id, was_update: true, prev_attending: existing.attending };
+      }
+      const result = db.prepare(`
+        INSERT INTO rsvps (name, email, attending, event_type, first_course_id, main_course_id, dietary_restrictions)
+        VALUES (:name, :email, :attending, :event_type, :first_course_id, :main_course_id, :dietary_restrictions)
+      `).run({
+        name, email: normEmail, attending,
+        event_type, first_course_id, main_course_id, dietary_restrictions,
+      });
+      return { id: result.lastInsertRowid, was_update: false, prev_attending: null };
+    },
+
     getAllRsvps() {
       return db.prepare(`
         SELECT r.*,
@@ -69,7 +103,9 @@ function initDb(path = 'rsvps.db') {
     },
 
     getRsvpByEmail(email) {
-      return db.prepare('SELECT * FROM rsvps WHERE email = :email').get({ email }) || null;
+      const normEmail = String(email || '').trim().toLowerCase();
+      if (!normEmail) return null;
+      return db.prepare('SELECT * FROM rsvps WHERE email = :email').get({ email: normEmail }) || null;
     },
 
     // ── menu_items

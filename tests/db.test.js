@@ -86,4 +86,66 @@ describe('initDb', () => {
     db.insertMenuItem({ course: 'first', name: 'A' });
     expect(db.reorderMenuItems('first', [9999])).toEqual({ ok: false });
   });
+
+  test('upsertRsvp inserts on first call with was_update:false', () => {
+    const r = db.upsertRsvp({
+      name: 'Alice', email: 'alice@example.com', attending: 1,
+      event_type: 'ceremony_party',
+    });
+    expect(r.was_update).toBe(false);
+    expect(r.prev_attending).toBeNull();
+    expect(typeof r.id).toBe('number');
+    const stored = db.getRsvpByEmail('alice@example.com');
+    expect(stored.name).toBe('Alice');
+    expect(stored.event_type).toBe('ceremony_party');
+  });
+
+  test('upsertRsvp updates on duplicate email and reports prev_attending', () => {
+    db.upsertRsvp({
+      name: 'Alice', email: 'alice@example.com', attending: 1,
+      event_type: 'ceremony_party',
+    });
+    const r = db.upsertRsvp({
+      name: 'Alice Cooper', email: 'alice@example.com', attending: 0,
+    });
+    expect(r.was_update).toBe(true);
+    expect(r.prev_attending).toBe(1);
+    const stored = db.getRsvpByEmail('alice@example.com');
+    expect(stored.name).toBe('Alice Cooper');
+    expect(stored.attending).toBe(0);
+    expect(stored.event_type).toBeNull();
+  });
+
+  test('upsertRsvp normalises email to lowercase + trim', () => {
+    db.upsertRsvp({
+      name: 'Alice', email: '  Alice@Example.COM  ', attending: 1,
+      event_type: 'ceremony_party',
+    });
+    const stored = db.getRsvpByEmail('alice@example.com');
+    expect(stored).not.toBeNull();
+    expect(stored.email).toBe('alice@example.com');
+  });
+
+  test('getRsvpByEmail matches case-insensitively', () => {
+    db.upsertRsvp({
+      name: 'Alice', email: 'alice@example.com', attending: 1,
+      event_type: 'ceremony_party',
+    });
+    expect(db.getRsvpByEmail('ALICE@example.com')).not.toBeNull();
+    expect(db.getRsvpByEmail('  alice@example.com  ')).not.toBeNull();
+  });
+
+  test('upsertRsvp sets updated_at on update', () => {
+    const a = db.upsertRsvp({
+      name: 'Alice', email: 'alice@example.com', attending: 1,
+      event_type: 'ceremony_party',
+    });
+    const before = db.getRsvpByEmail('alice@example.com');
+    expect(before.updated_at).toBeNull();
+    db.upsertRsvp({
+      name: 'Alice', email: 'alice@example.com', attending: 0,
+    });
+    const after = db.getRsvpByEmail('alice@example.com');
+    expect(after.updated_at).toBeTruthy();
+  });
 });
