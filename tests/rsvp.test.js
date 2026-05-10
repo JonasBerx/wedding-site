@@ -183,3 +183,92 @@ describe('POST /api/rsvp', () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe('GET /api/rsvp', () => {
+  let app, db;
+  beforeEach(() => {
+    delete process.env.RSVP_DEADLINE;
+    db = initDb(':memory:');
+    app = createApp(db);
+  });
+  afterEach(() => {
+    db.close();
+    delete process.env.RSVP_DEADLINE;
+  });
+
+  test('without email returns deadline_passed:false and rsvp:null', async () => {
+    const res = await request(app).get('/api/rsvp');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ deadline_passed: false, rsvp: null });
+  });
+
+  test('with empty email behaves like no email', async () => {
+    const res = await request(app).get('/api/rsvp?email=');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ deadline_passed: false, rsvp: null });
+  });
+
+  test('with malformed email returns 400', async () => {
+    const res = await request(app).get('/api/rsvp?email=not-an-email');
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('invalid email');
+  });
+
+  test('with unknown email returns rsvp:null', async () => {
+    const res = await request(app).get('/api/rsvp?email=ghost@example.com');
+    expect(res.status).toBe(200);
+    expect(res.body.rsvp).toBeNull();
+  });
+
+  test('with known email returns the public shape', async () => {
+    const f = db.insertMenuItem({ course: 'first', name: 'Tomato' });
+    const m = db.insertMenuItem({ course: 'main',  name: 'Lamb' });
+    db.upsertRsvp({
+      name: 'Alice', email: 'alice@example.com', attending: 1,
+      event_type: 'full',
+      first_course_id: f.lastInsertRowid,
+      main_course_id:  m.lastInsertRowid,
+      dietary_restrictions: 'gluten free',
+    });
+    const res = await request(app).get('/api/rsvp?email=alice@example.com');
+    expect(res.status).toBe(200);
+    expect(res.body.deadline_passed).toBe(false);
+    expect(res.body.rsvp).toEqual({
+      name: 'Alice',
+      email: 'alice@example.com',
+      attending: 1,
+      event_type: 'full',
+      first_course_id: f.lastInsertRowid,
+      main_course_id:  m.lastInsertRowid,
+      dietary_restrictions: 'gluten free',
+    });
+  });
+
+  test('reports deadline_passed:true when RSVP_DEADLINE is in the past', async () => {
+    process.env.RSVP_DEADLINE = '2000-01-01T00:00:00Z';
+    const res = await request(app).get('/api/rsvp');
+    expect(res.body.deadline_passed).toBe(true);
+  });
+
+  test('reports deadline_passed:false when RSVP_DEADLINE is in the future', async () => {
+    process.env.RSVP_DEADLINE = '2099-01-01T00:00:00Z';
+    const res = await request(app).get('/api/rsvp');
+    expect(res.body.deadline_passed).toBe(false);
+  });
+
+  test('ignores malformed RSVP_DEADLINE (treats as not set)', async () => {
+    process.env.RSVP_DEADLINE = 'not-a-date';
+    const res = await request(app).get('/api/rsvp');
+    expect(res.body.deadline_passed).toBe(false);
+  });
+
+  test('lookup is case-insensitive', async () => {
+    db.upsertRsvp({
+      name: 'Alice', email: 'alice@example.com', attending: 1,
+      event_type: 'ceremony_party',
+    });
+    const res = await request(app).get('/api/rsvp?email=ALICE@example.com');
+    expect(res.body.rsvp).not.toBeNull();
+    expect(res.body.rsvp.email).toBe('alice@example.com');
+  });
+});

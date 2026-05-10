@@ -2,8 +2,35 @@ const express = require('express');
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+const RSVP_PUBLIC_FIELDS = [
+  'name', 'email', 'attending', 'event_type',
+  'first_course_id', 'main_course_id', 'dietary_restrictions',
+];
+
+function publicShape(r) {
+  const out = {};
+  for (const k of RSVP_PUBLIC_FIELDS) out[k] = r[k];
+  return out;
+}
+
+function deadlinePassed() {
+  const v = process.env.RSVP_DEADLINE;
+  if (!v) return false;
+  const t = Date.parse(v);
+  if (Number.isNaN(t)) return false;
+  return Date.now() > t;
+}
+
 function createRsvpRouter(db) {
   const router = express.Router();
+
+  router.get('/', (req, res) => {
+    const raw = typeof req.query.email === 'string' ? req.query.email.trim() : '';
+    if (!raw) return res.json({ deadline_passed: deadlinePassed(), rsvp: null });
+    if (!EMAIL_RE.test(raw)) return res.status(400).json({ error: 'invalid email' });
+    const r = db.getRsvpByEmail(raw);
+    res.json({ deadline_passed: deadlinePassed(), rsvp: r ? publicShape(r) : null });
+  });
 
   router.post('/', (req, res) => {
     const { name, email, attending, event_type, first_course_id, main_course_id, dietary_restrictions } = req.body;
@@ -34,9 +61,7 @@ function createRsvpRouter(db) {
         }
         const f = db.getMenuItemById(first_course_id);
         const m = db.getMenuItemById(main_course_id);
-        if (!f || !m) {
-          return res.status(400).json({ error: 'menu_item_not_found' });
-        }
+        if (!f || !m) return res.status(400).json({ error: 'menu_item_not_found' });
         if (f.course !== 'first' || m.course !== 'main') {
           return res.status(400).json({ error: 'course mismatch: first_course_id must reference a first course, main_course_id a main course' });
         }
