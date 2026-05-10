@@ -2,6 +2,9 @@ import React from 'react';
 import { Sprig } from '../botanicals';
 import Toast from '../components/Toast';
 import ConfirmModal from '../components/ConfirmModal';
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { SortableContext, useSortable, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 const HEAD_FONT = '"DM Serif Display", serif';
 const BODY_FONT = '"EB Garamond", Georgia, serif';
@@ -57,6 +60,47 @@ const tdStyle = {
   fontFamily: BODY_FONT, fontSize: 14, color: INK,
   borderBottom: `1px solid ${RULE_SOFT}`, verticalAlign: 'top',
 };
+
+function SortableMenuRow({ item, onToggleVegan, onDelete }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    background: isDragging ? PAPER_DARK : 'transparent',
+  };
+  return (
+    <tr ref={setNodeRef} style={style}>
+      <td style={{ ...tdStyle, width: 36, cursor: 'grab' }} {...attributes} {...listeners} aria-label="Reorder">⋮⋮</td>
+      <td style={{ ...tdStyle, fontFamily: HEAD_FONT, fontStyle: 'italic', fontSize: 17 }}>{item.name}</td>
+      <td style={{ ...tdStyle, color: INK_SOFT }}>{item.note || '—'}</td>
+      <td style={tdStyle}>
+        <button
+          type="button"
+          onClick={() => onToggleVegan(item)}
+          style={{
+            ...outlineButton,
+            background: item.is_vegan ? ACCENT : 'transparent',
+            color:      item.is_vegan ? PAPER  : INK,
+            borderColor: item.is_vegan ? ACCENT : INK,
+          }}
+        >{item.is_vegan ? 'Vegan' : 'Mark vegan'}</button>
+      </td>
+      <td style={tdStyle}>{item.referenced_count}</td>
+      <td style={{ ...tdStyle, width: 100 }}>
+        <button
+          onClick={() => onDelete(item)}
+          disabled={item.referenced_count > 0}
+          title={item.referenced_count > 0 ? 'An RSVP picked this' : 'Delete dish'}
+          style={{
+            ...outlineButton,
+            cursor: item.referenced_count > 0 ? 'not-allowed' : 'pointer',
+            opacity: item.referenced_count > 0 ? 0.4 : 1,
+          }}
+        >Delete</button>
+      </td>
+    </tr>
+  );
+}
 
 export default function AdminDashboard() {
   const [tab, setTab] = React.useState('rsvps');
@@ -170,6 +214,32 @@ export default function AdminDashboard() {
     });
     if (!res.ok) { setToast('Could not update item.'); return; }
     await loadData();
+  }
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+
+  async function handleMenuDragEnd(course, event) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const list = menu.filter(i => i.course === course);
+    const oldIndex = list.findIndex(i => i.id === active.id);
+    const newIndex = list.findIndex(i => i.id === over.id);
+    if (oldIndex < 0 || newIndex < 0) return;
+    const reordered = arrayMove(list, oldIndex, newIndex);
+    // Optimistic local update
+    setMenu(prev => {
+      const others = prev.filter(i => i.course !== course);
+      return [...others, ...reordered];
+    });
+    const ordered_ids = reordered.map(i => i.id);
+    const res = await apiFetch('/api/admin/menu/reorder', null, {
+      method: 'POST',
+      body: JSON.stringify({ course, ordered_ids }),
+    });
+    if (!res.ok) {
+      setToast('Reorder failed — refreshing.');
+      await loadData();
+    }
   }
 
   async function performMenuDelete(item) {
@@ -407,56 +477,41 @@ export default function AdminDashboard() {
                     fontFamily: LABEL_FONT, fontSize: 11, letterSpacing: '0.32em',
                     textTransform: 'uppercase', color: LABEL, marginBottom: 8,
                   }}>{course} course · {list.length}</div>
-                  <div style={{ border: `1px solid ${RULE}` }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                      <thead>
-                        <tr>
-                          {['Name','Note','Vegan','RSVPs',''].map(h => (
-                            <th key={h} style={thStyle}>{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {list.map(item => (
-                          <tr key={item.id}>
-                            <td style={{ ...tdStyle, fontFamily: HEAD_FONT, fontStyle: 'italic', fontSize: 17 }}>{item.name}</td>
-                            <td style={{ ...tdStyle, color: INK_SOFT }}>{item.note || '—'}</td>
-                            <td style={tdStyle}>
-                              <button
-                                type="button"
-                                onClick={() => handleMenuToggleVegan(item)}
-                                style={{
-                                  ...outlineButton,
-                                  background: item.is_vegan ? ACCENT : 'transparent',
-                                  color:      item.is_vegan ? PAPER  : INK,
-                                  borderColor: item.is_vegan ? ACCENT : INK,
-                                }}
-                              >{item.is_vegan ? 'Vegan' : 'Mark vegan'}</button>
-                            </td>
-                            <td style={tdStyle}>{item.referenced_count}</td>
-                            <td style={{ ...tdStyle, width: 100 }}>
-                              <button
-                                onClick={() => setPendingMenuDelete(item)}
-                                disabled={item.referenced_count > 0}
-                                title={item.referenced_count > 0 ? 'An RSVP picked this' : 'Delete dish'}
-                                style={{
-                                  ...outlineButton,
-                                  cursor: item.referenced_count > 0 ? 'not-allowed' : 'pointer',
-                                  opacity: item.referenced_count > 0 ? 0.4 : 1,
-                                }}
-                              >Delete</button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    {list.length === 0 && (
-                      <div style={{
-                        padding: '24px', textAlign: 'center',
-                        fontFamily: HEAD_FONT, fontSize: 16, fontStyle: 'italic', color: LABEL,
-                      }}>No {course} courses yet.</div>
-                    )}
-                  </div>
+                  <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    onDragEnd={(e) => handleMenuDragEnd(course, e)}
+                  >
+                    <SortableContext items={list.map(i => i.id)} strategy={verticalListSortingStrategy}>
+                      <div style={{ border: `1px solid ${RULE}` }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                          <thead>
+                            <tr>
+                              {['','Name','Note','Vegan','RSVPs',''].map((h, i) => (
+                                <th key={i} style={thStyle}>{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {list.map(item => (
+                              <SortableMenuRow
+                                key={item.id}
+                                item={item}
+                                onToggleVegan={handleMenuToggleVegan}
+                                onDelete={(it) => setPendingMenuDelete(it)}
+                              />
+                            ))}
+                          </tbody>
+                        </table>
+                        {list.length === 0 && (
+                          <div style={{
+                            padding: '24px', textAlign: 'center',
+                            fontFamily: HEAD_FONT, fontSize: 16, fontStyle: 'italic', color: LABEL,
+                          }}>No {course} courses yet.</div>
+                        )}
+                      </div>
+                    </SortableContext>
+                  </DndContext>
                 </div>
               );
             })}
