@@ -137,6 +137,11 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
     eventType: 'full', firstCourseId: '', mainCourseId: '',
   });
   const [uiState, setUiState] = React.useState('idle');
+  const [readOnly, setReadOnly] = React.useState(false);
+  const [prefillCandidate, setPrefillCandidate] = React.useState(null);
+  const [lookupEmail, setLookupEmail] = React.useState('');
+  const editedSinceLoad = React.useRef(false);
+  const [releasedGift, setReleasedGift] = React.useState(null);
   const [menu, setMenu] = React.useState(null);
   React.useEffect(() => {
     let cancelled = false;
@@ -146,6 +151,42 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
       .catch(() => { if (!cancelled) setMenu([]); });
     return () => { cancelled = true; };
   }, []);
+
+  const prefillFromRsvp = React.useCallback((r) => {
+    setForm(prev => ({
+      ...prev,
+      names: r.name || '',
+      email: r.email || '',
+      attending: r.attending === 1 ? 'yes' : 'no',
+      eventType: r.event_type || 'full',
+      firstCourseId: r.first_course_id != null ? String(r.first_course_id) : '',
+      mainCourseId:  r.main_course_id  != null ? String(r.main_course_id)  : '',
+      diet: r.dietary_restrictions || '',
+    }));
+    setLookupEmail(r.email || '');
+    editedSinceLoad.current = false;
+  }, []);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    let stored = '';
+    try { stored = sessionStorage.getItem('rsvpEmail') || ''; } catch {}
+    const url = stored ? `/api/rsvp?email=${encodeURIComponent(stored)}` : '/api/rsvp';
+    fetch(url)
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => {
+        if (cancelled || !data) return;
+        if (data.deadline_passed) setReadOnly(true);
+        if (data.rsvp) prefillFromRsvp(data.rsvp);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [prefillFromRsvp]);
+
+  function updateForm(patch) {
+    if (!('email' in patch)) editedSinceLoad.current = true;
+    setForm(prev => ({ ...prev, ...patch }));
+  }
 
   const inputStyle = {
     width: '100%',
@@ -200,7 +241,27 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      setUiState(res.ok ? 'sent' : 'error');
+      if (res.ok) {
+        try {
+          const data = await res.json();
+          if (data?.released_gift) setReleasedGift(data.released_gift);
+          else setReleasedGift(null);
+        } catch { setReleasedGift(null); }
+        try { sessionStorage.setItem('rsvpEmail', form.email.trim().toLowerCase()); } catch {}
+        setUiState('sent');
+      } else if (res.status === 409) {
+        try {
+          const data = await res.json();
+          if (data?.error === 'deadline_passed') {
+            setReadOnly(true);
+            setUiState('idle');
+            return;
+          }
+        } catch {}
+        setUiState('error');
+      } else {
+        setUiState('error');
+      }
     } catch {
       setUiState('error');
     }
@@ -254,7 +315,7 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
       <div>
         <span style={labelStyle}>Names</span>
         <input style={inputStyle} value={form.names} disabled={disabled}
-          onChange={(e) => setForm({ ...form, names: e.target.value })}
+          onChange={(e) => updateForm({ names: e.target.value })}
           placeholder="Camille &amp; Olivier" />
       </div>
 
@@ -278,7 +339,7 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
               <RadioDot selected={form.attending === val} />
               <input type="radio" name="att" value={val}
                 checked={form.attending === val}
-                onChange={(e) => setForm({ ...form, attending: e.target.value })}
+                onChange={(e) => updateForm({ attending: e.target.value })}
                 style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }} />
               {lbl}
             </label>
@@ -291,7 +352,7 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
         <div>
           <span style={labelStyle}>Day plan</span>
           <div style={{ display: 'flex', gap: 24, marginTop: 8, flexWrap: 'wrap' }}>
-            {[['full', 'Full day (ceremony + dinner + party)'], ['ceremony_party', 'Ceremony & evening only']].map(([val, lbl]) => (
+            {[['full', 'Full day (ceremony + dinner + party)'], ['ceremony_party', 'Ceremony or evening only']].map(([val, lbl]) => (
               <label key={val} style={{
                 display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer',
                 fontFamily: bodyFont, fontSize: 16, color: theme.ink,
@@ -299,7 +360,7 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
                 <RadioDot selected={form.eventType === val} />
                 <input type="radio" name="eventType" value={val}
                   checked={form.eventType === val}
-                  onChange={() => setForm({ ...form, eventType: val, firstCourseId: '', mainCourseId: '' })}
+                  onChange={() => updateForm({ eventType: val, firstCourseId: '', mainCourseId: '' })}
                   style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }} />
                 {lbl}
               </label>
@@ -332,7 +393,7 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
                   required
                   value={form[stateKey]}
                   disabled={disabled}
-                  onChange={(e) => setForm({ ...form, [stateKey]: e.target.value })}
+                  onChange={(e) => updateForm({ [stateKey]: e.target.value })}
                   style={{ ...inputStyle, padding: '10px 0 10px', appearance: 'auto' }}
                 >
                   <option value="" disabled>— pick one —</option>
@@ -354,12 +415,12 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
           <span style={labelStyle}>Guests</span>
           <input style={inputStyle} type="number" min="1" max="6" disabled={disabled}
             value={form.guests}
-            onChange={(e) => setForm({ ...form, guests: e.target.value })} />
+            onChange={(e) => updateForm({ guests: e.target.value })} />
         </div>
         <div>
           <span style={labelStyle}>Dietary notes</span>
           <input style={inputStyle} disabled={disabled} value={form.diet}
-            onChange={(e) => setForm({ ...form, diet: e.target.value })}
+            onChange={(e) => updateForm({ diet: e.target.value })}
             placeholder="allergies, etc." />
         </div>
       </div>
@@ -368,7 +429,7 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
       <div>
         <span style={labelStyle}>A song to dance to</span>
         <input style={inputStyle} disabled={disabled} value={form.song}
-          onChange={(e) => setForm({ ...form, song: e.target.value })}
+          onChange={(e) => updateForm({ song: e.target.value })}
           placeholder="something we'll love" />
       </div>
 
