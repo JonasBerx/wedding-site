@@ -13,11 +13,15 @@ function createAdminRouter(db) {
   });
 
   router.post('/registry', requireAuth, (req, res) => {
-    const { title, description } = req.body;
+    const { title, description, unclaimable } = req.body;
     if (!title || typeof title !== 'string' || !title.trim()) {
       return res.status(400).json({ error: 'title must be a non-empty string' });
     }
-    const result = db.insertRegistryItem({ title, description: description || null });
+    const result = db.insertRegistryItem({
+      title,
+      description: description || null,
+      unclaimable: unclaimable ? 1 : 0,
+    });
     res.status(201).json(db.getRegistryItemById(result.lastInsertRowid));
   });
 

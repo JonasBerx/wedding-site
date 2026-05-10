@@ -122,6 +122,24 @@ describe('POST /api/admin/registry', () => {
       .auth('admin', 'secret').send({ title: '' });
     expect(res.status).toBe(400);
   });
+
+  test('persists unclaimable: true', async () => {
+    const res = await request(app).post('/api/admin/registry')
+      .auth('admin', 'secret')
+      .send({ title: 'Cash gift', unclaimable: true });
+    expect(res.status).toBe(201);
+    expect(res.body.unclaimable).toBe(1);
+    const stored = db.getAllRegistryItems()[0];
+    expect(stored.unclaimable).toBe(1);
+  });
+
+  test('defaults to unclaimable: 0 when omitted', async () => {
+    const res = await request(app).post('/api/admin/registry')
+      .auth('admin', 'secret')
+      .send({ title: 'Espresso machine' });
+    expect(res.status).toBe(201);
+    expect(res.body.unclaimable).toBe(0);
+  });
 });
 
 describe('DELETE /api/admin/registry/:id', () => {
