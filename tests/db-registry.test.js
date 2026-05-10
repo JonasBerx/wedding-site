@@ -108,4 +108,28 @@ describe('registry DB methods', () => {
     const items = db.getRegistryItemsWithClaimer();
     expect(items[0].claimer_name).toBeNull();
   });
+
+  test('insertRegistryItem stores unclaimable: 0 by default', () => {
+    db.insertRegistryItem({ title: 'Espresso machine' });
+    const [item] = db.getAllRegistryItems();
+    expect(item.unclaimable).toBe(0);
+  });
+
+  test('insertRegistryItem stores unclaimable: 1 when truthy passed', () => {
+    db.insertRegistryItem({ title: 'Cash gift', unclaimable: true });
+    const [item] = db.getAllRegistryItems();
+    expect(item.unclaimable).toBe(1);
+  });
+
+  test('insertRegistryItem coerces non-boolean truthy values to 1', () => {
+    db.insertRegistryItem({ title: 'Honeymoon fund', unclaimable: 1 });
+    const [item] = db.getAllRegistryItems();
+    expect(item.unclaimable).toBe(1);
+  });
+
+  test('getRegistryItemsWithClaimer includes unclaimable column', () => {
+    db.insertRegistryItem({ title: 'Cash gift', unclaimable: true });
+    const [item] = db.getRegistryItemsWithClaimer();
+    expect(item.unclaimable).toBe(1);
+  });
 });

@@ -48,9 +48,16 @@ function initDb(path = 'rsvps.db') {
       title               TEXT NOT NULL,
       description         TEXT,
       claimed_by_rsvp_id  INTEGER REFERENCES rsvps(id),
+      unclaimable         INTEGER NOT NULL DEFAULT 0,
       created_at          DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  // Idempotent migration for existing tables created before `unclaimable` was added.
+  const registryCols = db.prepare('PRAGMA table_info(registry_items)').all().map(c => c.name);
+  if (!registryCols.includes('unclaimable')) {
+    db.exec('ALTER TABLE registry_items ADD COLUMN unclaimable INTEGER NOT NULL DEFAULT 0');
+  }
 
   return {
     insertRsvp({ name, email, attending, event_type = null, first_course_id = null, main_course_id = null, dietary_restrictions = null }) {
@@ -200,11 +207,11 @@ function initDb(path = 'rsvps.db') {
       return { ok: true };
     },
 
-    // ── registry_items (unchanged)
-    insertRegistryItem({ title, description = null }) {
+    // ── registry_items
+    insertRegistryItem({ title, description = null, unclaimable = 0 }) {
       return db.prepare(
-        'INSERT INTO registry_items (title, description) VALUES (:title, :description)'
-      ).run({ title, description });
+        'INSERT INTO registry_items (title, description, unclaimable) VALUES (:title, :description, :unclaimable)'
+      ).run({ title, description, unclaimable: unclaimable ? 1 : 0 });
     },
     getAllRegistryItems() {
       return db.prepare('SELECT * FROM registry_items ORDER BY id ASC').all();
