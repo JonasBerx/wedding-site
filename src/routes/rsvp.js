@@ -6,7 +6,7 @@ function createRsvpRouter(db) {
   const router = express.Router();
 
   router.post('/', (req, res) => {
-    const { name, email, attending, event_type, is_vegan, meal_preference, dietary_restrictions } = req.body;
+    const { name, email, attending, event_type, first_course_id, main_course_id, dietary_restrictions } = req.body;
 
     const trimmedName  = typeof name  === 'string' ? name.trim()  : '';
     const trimmedEmail = typeof email === 'string' ? email.trim() : '';
@@ -14,14 +14,13 @@ function createRsvpRouter(db) {
     if (!trimmedName || !trimmedEmail || typeof attending !== 'boolean') {
       return res.status(400).json({ error: 'name, email, and attending (boolean) are required' });
     }
-
     if (!EMAIL_RE.test(trimmedEmail)) {
       return res.status(400).json({ error: 'email must be a valid email address' });
     }
 
     let dbEventType = null;
-    let dbIsVegan   = null;
-    let dbMeal      = null;
+    let dbFirstId   = null;
+    let dbMainId    = null;
 
     if (attending) {
       if (event_type !== 'full' && event_type !== 'ceremony_party') {
@@ -30,13 +29,19 @@ function createRsvpRouter(db) {
       dbEventType = event_type;
 
       if (event_type === 'full') {
-        dbIsVegan = is_vegan === true ? 1 : 0;
-        if (!is_vegan) {
-          if (meal_preference !== 1 && meal_preference !== 2) {
-            return res.status(400).json({ error: 'meal_preference must be 1 (veggie) or 2 (meat) for full-day non-vegan guests' });
-          }
-          dbMeal = meal_preference;
+        if (!Number.isInteger(first_course_id) || !Number.isInteger(main_course_id)) {
+          return res.status(400).json({ error: 'first_course_id and main_course_id are required for full-day guests' });
         }
+        const f = db.getMenuItemById(first_course_id);
+        const m = db.getMenuItemById(main_course_id);
+        if (!f || !m) {
+          return res.status(400).json({ error: 'menu_item_not_found' });
+        }
+        if (f.course !== 'first' || m.course !== 'main') {
+          return res.status(400).json({ error: 'course mismatch: first_course_id must reference a first course, main_course_id a main course' });
+        }
+        dbFirstId = f.id;
+        dbMainId  = m.id;
       }
     }
 
@@ -46,8 +51,8 @@ function createRsvpRouter(db) {
         email: trimmedEmail,
         attending: attending ? 1 : 0,
         event_type: dbEventType,
-        is_vegan: dbIsVegan,
-        meal_preference: dbMeal,
+        first_course_id: dbFirstId,
+        main_course_id:  dbMainId,
         dietary_restrictions: dietary_restrictions || null,
       });
       res.status(201).json({ message: 'RSVP received' });

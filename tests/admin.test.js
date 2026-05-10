@@ -27,12 +27,22 @@ describe('GET /api/admin/rsvps — auth', () => {
   });
 
   test('returns all RSVPs as JSON array', async () => {
-    db.insertRsvp({ name: 'Alice', email: 'alice@example.com', attending: 1, event_type: 'full', is_vegan: 0, meal_preference: 1, dietary_restrictions: null });
+    const f = db.insertMenuItem({ course: 'first', name: 'Tomato' });
+    const m = db.insertMenuItem({ course: 'main',  name: 'Lamb' });
+    db.insertRsvp({
+      name: 'Alice', email: 'alice@example.com', attending: 1,
+      event_type: 'full',
+      first_course_id: f.lastInsertRowid,
+      main_course_id:  m.lastInsertRowid,
+      dietary_restrictions: null,
+    });
     const res = await request(app).get('/api/admin/rsvps').auth('admin', 'secret');
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
     expect(res.body[0].name).toBe('Alice');
     expect(res.body[0].event_type).toBe('full');
+    expect(res.body[0].first_course_name).toBe('Tomato');
+    expect(res.body[0].main_course_name).toBe('Lamb');
   });
 });
 
