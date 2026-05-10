@@ -12,10 +12,12 @@ function HomePage() {
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/" element={<PaletteShell><HomePage /></PaletteShell>} />
-      <Route path="/registry" element={<PaletteShell><RegistryPage /></PaletteShell>} />
-      <Route path="/admin" element={<AdminDashboard />} />
-    </Routes>
+    <PaletteShell>
+      <Routes>
+        <Route path="/" element={<HomePage />} />
+        <Route path="/registry" element={<RegistryPage />} />
+        <Route path="/admin" element={<AdminDashboard />} />
+      </Routes>
+    </PaletteShell>
   );
 }
