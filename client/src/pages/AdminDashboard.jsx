@@ -338,7 +338,7 @@ export default function AdminDashboard() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
-                  {['ID','Name','Email','Attending','Event','Vegan','Meal','Dietary','Submitted'].map(h => (
+                  {['ID','Name','Email','Attending','Event','First','Main','Dietary','Submitted'].map(h => (
                     <th key={h} style={thStyle}>{h}</th>
                   ))}
                 </tr>
@@ -351,8 +351,8 @@ export default function AdminDashboard() {
                     <td style={tdStyle}>{r.email}</td>
                     <td style={tdStyle}>{r.attending ? 'Yes' : 'No'}</td>
                     <td style={tdStyle}>{r.event_type === 'full' ? 'Full day' : r.event_type === 'ceremony_party' ? 'Ceremony / Evening' : '—'}</td>
-                    <td style={tdStyle}>{r.is_vegan === 1 ? 'Yes' : '—'}</td>
-                    <td style={tdStyle}>{r.meal_preference === 1 ? 'Veggie' : r.meal_preference === 2 ? 'Meat' : '—'}</td>
+                    <td style={tdStyle}>{r.first_course_name || '—'}</td>
+                    <td style={tdStyle}>{r.main_course_name  || '—'}</td>
                     <td style={tdStyle}>{r.dietary_restrictions || '—'}</td>
                     <td style={{ ...tdStyle, color: INK_SOFT }}>{r.submitted_at}</td>
                   </tr>
