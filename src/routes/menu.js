@@ -1,5 +1,4 @@
 const express = require('express');
-const { requireAuth } = require('../middleware/auth');
 
 function publicShape(item) {
   return {
