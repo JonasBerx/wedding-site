@@ -106,6 +106,12 @@ describe('POST /api/admin/registry', () => {
     expect(res.body.title).toBe('Honeymoon fund');
     expect(res.body.id).toBeDefined();
   });
+
+  test('returns 400 if title is empty string', async () => {
+    const res = await request(app).post('/api/admin/registry')
+      .auth('admin', 'secret').send({ title: '' });
+    expect(res.status).toBe(400);
+  });
 });
 
 describe('DELETE /api/admin/registry/:id', () => {
@@ -143,5 +149,10 @@ describe('DELETE /api/admin/registry/:id', () => {
     db.claimRegistryItem(item.id, rsvp.id);
     const res = await request(app).delete(`/api/admin/registry/${item.id}`).auth('admin', 'secret');
     expect(res.status).toBe(409);
+  });
+
+  test('returns 404 for non-existent item', async () => {
+    const res = await request(app).delete('/api/admin/registry/99999').auth('admin', 'secret');
+    expect(res.status).toBe(404);
   });
 });
