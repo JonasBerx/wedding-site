@@ -1,5 +1,4 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
 import { usePaletteMode } from '../PaletteShell';
 import { OliveBranch, Wildflower, Lavender, Sprig } from '../botanicals';
 import { FooterSection } from '../sections/Footer';
@@ -32,14 +31,17 @@ export default function RegistryPage() {
 
   // On first mount, if we have a remembered email, look up the claim silently
   React.useEffect(() => {
-    if (!sessionEmail) return;
-    fetch(`/api/registry/validate?email=${encodeURIComponent(sessionEmail)}`)
+    let stored = '';
+    try { stored = sessionStorage.getItem(SESSION_KEY) || ''; } catch {}
+    if (!stored) return;
+    fetch(`/api/registry/validate?email=${encodeURIComponent(stored)}`)
       .then(r => (r.ok ? r.json() : null))
       .then(data => {
         if (data && data.claimedItemId) setMyClaimedItemId(data.claimedItemId);
       })
       .catch(() => {});
-  }, [sessionEmail]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function rememberEmail(email) {
     try { sessionStorage.setItem(SESSION_KEY, email); } catch {}
