@@ -44,7 +44,7 @@ function MenuSection({ t, fonts }) {
       <div style={{ textAlign: 'center', marginBottom: isMobile ? 36 : 56 }}>
         <SectionHead t={t} fonts={fonts}
           kicker="and to eat" title="At table, then"
-          subtitle="A long, slow dinner. Two courses to choose from — tell us yours when you RSVP." align="center" />
+          subtitle="A long, slow dinner. Two courses to choose from (and a dessert buffet after!) — tell us yours when you RSVP." align="center" />
       </div>
 
       <div style={{

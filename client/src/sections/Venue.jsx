@@ -15,7 +15,7 @@ function VenueSection({ t, fonts }) {
       borderTop: `1px solid ${t.rule}`, borderBottom: `1px solid ${t.rule}`,
     }}>
       <SectionHead t={t} fonts={fonts}
-        kicker="the place" title="An old farmhouse, in the hills"
+        kicker="the place" title="An old farmhouse, in the fields"
         subtitle="Stone walls, woodland edges, an old chestnut tree old enough to remember everything. Worth the drive." />
 
       <div style={{
