@@ -1,8 +1,62 @@
 import React from 'react';
+import { Sprig } from '../botanicals';
+import Toast from '../components/Toast';
+import ConfirmModal from '../components/ConfirmModal';
 
-function b64(user, pass) {
-  return btoa(`${user}:${pass}`);
-}
+const HEAD_FONT = '"DM Serif Display", serif';
+const BODY_FONT = '"EB Garamond", Georgia, serif';
+const LABEL_FONT = '"EB Garamond", serif';
+
+const PAPER = '#fbf5ea';
+const PAPER_DARK = '#f5ecdc';
+const INK = '#2e2218';
+const INK_SOFT = '#5a4a3a';
+const LABEL = '#7a5a3e';
+const ACCENT = '#b85c4a';
+const RULE = 'rgba(46,34,24,0.18)';
+const RULE_SOFT = 'rgba(46,34,24,0.08)';
+
+function b64(user, pass) { return btoa(`${user}:${pass}`); }
+
+const inputStyle = {
+  width: '100%', boxSizing: 'border-box',
+  background: 'transparent', border: 'none',
+  borderBottom: `1px solid rgba(46,34,24,0.3)`,
+  fontFamily: BODY_FONT, fontSize: 16, color: INK,
+  padding: '8px 0', outline: 'none',
+};
+
+const labelStyle = {
+  display: 'block',
+  fontFamily: LABEL_FONT, fontSize: 10, letterSpacing: '0.3em',
+  textTransform: 'uppercase', color: LABEL, marginBottom: 6,
+};
+
+const primaryButton = {
+  background: INK, color: PAPER, border: 'none', cursor: 'pointer',
+  fontFamily: LABEL_FONT, fontSize: 12, letterSpacing: '0.18em',
+  textTransform: 'uppercase', padding: '12px 28px',
+};
+
+const outlineButton = {
+  background: 'transparent', color: INK, border: `1px solid ${INK}`,
+  cursor: 'pointer',
+  fontFamily: LABEL_FONT, fontSize: 11, letterSpacing: '0.18em',
+  textTransform: 'uppercase', padding: '6px 16px',
+};
+
+const thStyle = {
+  textAlign: 'left', padding: '12px 14px',
+  fontFamily: LABEL_FONT, fontSize: 11, letterSpacing: '0.18em',
+  textTransform: 'uppercase', color: LABEL,
+  background: PAPER_DARK, borderBottom: `1px solid ${RULE}`,
+};
+
+const tdStyle = {
+  padding: '12px 14px',
+  fontFamily: BODY_FONT, fontSize: 14, color: INK,
+  borderBottom: `1px solid ${RULE_SOFT}`, verticalAlign: 'top',
+};
 
 export default function AdminDashboard() {
   const [tab, setTab] = React.useState('rsvps');
@@ -15,6 +69,8 @@ export default function AdminDashboard() {
   const [newTitle, setNewTitle] = React.useState('');
   const [newDesc, setNewDesc] = React.useState('');
   const [addError, setAddError] = React.useState('');
+  const [toast, setToast] = React.useState('');
+  const [pendingDelete, setPendingDelete] = React.useState(null); // null | item
 
   async function apiFetch(path, creds, options = {}) {
     return fetch(path, {
@@ -51,9 +107,7 @@ export default function AdminDashboard() {
       return;
     }
     setAuth(creds);
-    setRsvps(await res.json());
-    const regRes = await apiFetch('/api/admin/registry', creds);
-    setRegistry(await regRes.json());
+    await loadData(creds);
   }
 
   async function handleAdd(e) {
@@ -64,12 +118,8 @@ export default function AdminDashboard() {
       body: JSON.stringify({ title: newTitle, description: newDesc || null }),
     });
     if (!res.ok) {
-      try {
-        const data = await res.json();
-        setAddError(data.error || 'Failed to add gift.');
-      } catch {
-        setAddError('Failed to add gift.');
-      }
+      try { setAddError((await res.json()).error || 'Failed to add gift.'); }
+      catch { setAddError('Failed to add gift.'); }
       return;
     }
     setNewTitle('');
@@ -77,127 +127,209 @@ export default function AdminDashboard() {
     await loadData();
   }
 
-  async function handleDelete(id) {
-    const res = await apiFetch(`/api/admin/registry/${id}`, null, { method: 'DELETE' });
+  async function performDelete(item) {
+    const res = await apiFetch(`/api/admin/registry/${item.id}`, null, { method: 'DELETE' });
+    setPendingDelete(null);
     if (res.status === 409) {
-      alert('Cannot delete: release the claim first.');
+      setToast('Cannot delete — release the claim first.');
+      return;
+    }
+    if (!res.ok) {
+      setToast('Could not delete the gift.');
       return;
     }
     await loadData();
   }
 
-  const th = { textAlign: 'left', padding: '8px 10px', borderBottom: '2px solid #ccc', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em', background: '#f5f5f5' };
-  const td = { padding: '8px 10px', borderBottom: '1px solid #eee', fontSize: 14, verticalAlign: 'top' };
-
+  // Login screen
   if (!auth) {
     return (
-      <div style={{ maxWidth: 380, margin: '80px auto', padding: '0 24px', fontFamily: 'sans-serif' }}>
-        <h1 style={{ marginBottom: 24 }}>Admin</h1>
-        {authError && <p style={{ color: '#a00', marginBottom: 16 }}>{authError}</p>}
-        <form onSubmit={handleLogin}>
-          <input placeholder="Username" value={user} onChange={e => setUser(e.target.value)} required style={{ display: 'block', width: '100%', padding: 8, marginBottom: 10, boxSizing: 'border-box', fontSize: 15 }} />
-          <input type="password" placeholder="Password" value={pass} onChange={e => setPass(e.target.value)} required style={{ display: 'block', width: '100%', padding: 8, marginBottom: 16, boxSizing: 'border-box', fontSize: 15 }} />
-          <button type="submit" style={{ padding: '9px 24px', fontSize: 14, cursor: 'pointer' }}>Log in</button>
-        </form>
+      <div style={{ minHeight: '100vh', background: PAPER, fontFamily: BODY_FONT, color: INK }}>
+        <div style={{ maxWidth: 420, margin: '0 auto', padding: '80px 24px' }}>
+          <div style={{ textAlign: 'center', marginBottom: 40 }}>
+            <div style={{ color: ACCENT, marginBottom: 16, display: 'flex', justifyContent: 'center' }}>
+              <Sprig size={36} />
+            </div>
+            <div style={{
+              fontFamily: LABEL_FONT, fontSize: 11, letterSpacing: '0.32em',
+              textTransform: 'uppercase', color: LABEL, marginBottom: 12,
+            }}>back office</div>
+            <div style={{
+              fontFamily: HEAD_FONT, fontSize: 48, fontStyle: 'italic',
+              lineHeight: 1, color: INK,
+            }}>Admin</div>
+          </div>
+          <form
+            onSubmit={handleLogin}
+            style={{
+              background: PAPER, border: `1px solid ${RULE}`,
+              padding: '36px 32px',
+            }}
+          >
+            {authError && <div style={{ color: ACCENT, fontSize: 14, marginBottom: 16 }}>{authError}</div>}
+            <div style={{ marginBottom: 18 }}>
+              <label style={labelStyle}>Username</label>
+              <input value={user} onChange={e => setUser(e.target.value)} required style={inputStyle} />
+            </div>
+            <div style={{ marginBottom: 28 }}>
+              <label style={labelStyle}>Password</label>
+              <input type="password" value={pass} onChange={e => setPass(e.target.value)} required style={inputStyle} />
+            </div>
+            <button type="submit" style={primaryButton}>Log in</button>
+          </form>
+        </div>
       </div>
     );
   }
 
+  // Authenticated dashboard
   return (
-    <div style={{ maxWidth: 960, margin: '40px auto', padding: '0 24px', fontFamily: 'sans-serif' }}>
-      <h1 style={{ marginBottom: 20 }}>Admin</h1>
-      <div style={{ marginBottom: 24, borderBottom: '2px solid #eee', paddingBottom: 0 }}>
-        {['rsvps', 'registry'].map(t => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            style={{ marginRight: 4, padding: '8px 20px', cursor: 'pointer', border: 'none', borderBottom: tab === t ? '2px solid #333' : '2px solid transparent', background: 'none', fontWeight: tab === t ? 700 : 400, fontSize: 14, textTransform: 'capitalize' }}
-          >
-            {t === 'rsvps' ? `RSVPs (${rsvps.length})` : `Registry (${registry.length})`}
-          </button>
-        ))}
+    <div style={{ minHeight: '100vh', background: PAPER, fontFamily: BODY_FONT, color: INK }}>
+      <Toast message={toast} onDismiss={() => setToast('')} />
+
+      <div style={{ maxWidth: 1000, margin: '0 auto', padding: '60px 40px' }}>
+        <div style={{ textAlign: 'center', marginBottom: 32 }}>
+          <div style={{ color: ACCENT, marginBottom: 12, display: 'flex', justifyContent: 'center' }}>
+            <Sprig size={36} />
+          </div>
+          <div style={{
+            fontFamily: LABEL_FONT, fontSize: 11, letterSpacing: '0.32em',
+            textTransform: 'uppercase', color: LABEL, marginBottom: 10,
+          }}>back office</div>
+          <div style={{
+            fontFamily: HEAD_FONT, fontSize: 48, fontStyle: 'italic',
+            lineHeight: 1, color: INK,
+          }}>Admin</div>
+        </div>
+
+        <div style={{ borderBottom: `1px solid ${RULE}`, marginBottom: 28, display: 'flex', gap: 32 }}>
+          {[
+            { key: 'rsvps', label: `RSVPS · ${rsvps.length}` },
+            { key: 'registry', label: `REGISTRY · ${registry.length}` },
+          ].map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => setTab(key)}
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer',
+                fontFamily: LABEL_FONT, fontSize: 11, letterSpacing: '0.32em',
+                textTransform: 'uppercase',
+                color: tab === key ? INK : LABEL,
+                padding: '12px 4px',
+                borderBottom: tab === key ? `2px solid ${ACCENT}` : '2px solid transparent',
+                marginBottom: -1,
+              }}
+            >{label}</button>
+          ))}
+        </div>
+
+        {tab === 'rsvps' && (
+          <div style={{ border: `1px solid ${RULE}`, overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  {['ID','Name','Email','Attending','Event','Vegan','Meal','Dietary','Submitted'].map(h => (
+                    <th key={h} style={thStyle}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rsvps.map(r => (
+                  <tr key={r.id}>
+                    <td style={tdStyle}>{r.id}</td>
+                    <td style={tdStyle}>{r.name}</td>
+                    <td style={tdStyle}>{r.email}</td>
+                    <td style={tdStyle}>{r.attending ? 'Yes' : 'No'}</td>
+                    <td style={tdStyle}>{r.event_type === 'full' ? 'Full day' : r.event_type === 'ceremony_party' ? 'Ceremony / Evening' : '—'}</td>
+                    <td style={tdStyle}>{r.is_vegan === 1 ? 'Yes' : '—'}</td>
+                    <td style={tdStyle}>{r.meal_preference === 1 ? 'Veggie' : r.meal_preference === 2 ? 'Meat' : '—'}</td>
+                    <td style={tdStyle}>{r.dietary_restrictions || '—'}</td>
+                    <td style={{ ...tdStyle, color: INK_SOFT }}>{r.submitted_at}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {rsvps.length === 0 && (
+              <div style={{
+                padding: '40px', textAlign: 'center',
+                fontFamily: HEAD_FONT, fontSize: 18, fontStyle: 'italic', color: LABEL,
+              }}>No RSVPs yet.</div>
+            )}
+          </div>
+        )}
+
+        {tab === 'registry' && (
+          <>
+            <form
+              onSubmit={handleAdd}
+              style={{
+                border: `1px solid ${RULE}`, padding: 24, marginBottom: 24,
+                display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap',
+              }}
+            >
+              <div style={{ flex: '1 1 200px' }}>
+                <label style={labelStyle}>Title</label>
+                <input value={newTitle} onChange={e => setNewTitle(e.target.value)} required style={inputStyle} />
+              </div>
+              <div style={{ flex: '2 1 280px' }}>
+                <label style={labelStyle}>Description (optional)</label>
+                <input value={newDesc} onChange={e => setNewDesc(e.target.value)} style={inputStyle} />
+              </div>
+              <button type="submit" style={primaryButton}>Add gift</button>
+            </form>
+            {addError && <div style={{ color: ACCENT, fontSize: 14, marginBottom: 16 }}>{addError}</div>}
+
+            <div style={{ border: `1px solid ${RULE}` }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr>
+                    {['Title','Description','Claimed by',''].map(h => (
+                      <th key={h} style={thStyle}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {registry.map(item => (
+                    <tr key={item.id}>
+                      <td style={{ ...tdStyle, fontFamily: HEAD_FONT, fontStyle: 'italic', fontSize: 17 }}>{item.title}</td>
+                      <td style={{ ...tdStyle, color: INK_SOFT }}>{item.description || '—'}</td>
+                      <td style={tdStyle}>{item.claimer_name || '—'}</td>
+                      <td style={{ ...tdStyle, width: 100 }}>
+                        <button
+                          onClick={() => setPendingDelete(item)}
+                          disabled={!!item.claimer_name}
+                          title={item.claimer_name ? 'Release claim first' : 'Delete gift'}
+                          style={{
+                            ...outlineButton,
+                            cursor: item.claimer_name ? 'not-allowed' : 'pointer',
+                            opacity: item.claimer_name ? 0.4 : 1,
+                          }}
+                        >Delete</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {registry.length === 0 && (
+                <div style={{
+                  padding: '40px', textAlign: 'center',
+                  fontFamily: HEAD_FONT, fontSize: 18, fontStyle: 'italic', color: LABEL,
+                }}>No gifts yet — add one above.</div>
+              )}
+            </div>
+          </>
+        )}
       </div>
 
-      {tab === 'rsvps' && (
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                {['ID','Name','Email','Attending','Event','Vegan','Meal','Dietary','Submitted'].map(h => (
-                  <th key={h} style={th}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rsvps.map(r => (
-                <tr key={r.id}>
-                  <td style={td}>{r.id}</td>
-                  <td style={td}>{r.name}</td>
-                  <td style={td}>{r.email}</td>
-                  <td style={td}>{r.attending ? 'Yes' : 'No'}</td>
-                  <td style={td}>{r.event_type === 'full' ? 'Full day' : r.event_type === 'ceremony_party' ? 'Ceremony / Evening' : '—'}</td>
-                  <td style={td}>{r.is_vegan === 1 ? 'Yes' : '—'}</td>
-                  <td style={td}>{r.meal_preference === 1 ? 'Veggie' : r.meal_preference === 2 ? 'Meat' : '—'}</td>
-                  <td style={td}>{r.dietary_restrictions || '—'}</td>
-                  <td style={td}>{r.submitted_at}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {rsvps.length === 0 && <p style={{ opacity: 0.5, marginTop: 16 }}>No RSVPs yet.</p>}
-        </div>
-      )}
-
-      {tab === 'registry' && (
-        <>
-          <form onSubmit={handleAdd} style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-            <input
-              value={newTitle}
-              onChange={e => setNewTitle(e.target.value)}
-              placeholder="Gift title (required)"
-              required
-              style={{ flex: '1 1 200px', padding: '8px 10px', fontSize: 14 }}
-            />
-            <input
-              value={newDesc}
-              onChange={e => setNewDesc(e.target.value)}
-              placeholder="Description (optional)"
-              style={{ flex: '2 1 280px', padding: '8px 10px', fontSize: 14 }}
-            />
-            <button type="submit" style={{ padding: '8px 20px', cursor: 'pointer', fontSize: 14 }}>Add gift</button>
-          </form>
-          {addError && <p style={{ color: '#a00', marginBottom: 12 }}>{addError}</p>}
-          <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 8 }}>
-            <thead>
-              <tr>
-                {['Title','Description','Claimed by',''].map(h => (
-                  <th key={h} style={th}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {registry.map(item => (
-                <tr key={item.id}>
-                  <td style={td}>{item.title}</td>
-                  <td style={td}>{item.description || '—'}</td>
-                  <td style={td}>{item.claimer_name || '—'}</td>
-                  <td style={{ ...td, width: 100 }}>
-                    <button
-                      onClick={() => handleDelete(item.id)}
-                      disabled={!!item.claimer_name}
-                      title={item.claimer_name ? 'Release claim first' : 'Delete gift'}
-                      style={{ cursor: item.claimer_name ? 'not-allowed' : 'pointer', opacity: item.claimer_name ? 0.4 : 1, padding: '4px 12px', fontSize: 13 }}
-                    >
-                      Delete
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {registry.length === 0 && <p style={{ opacity: 0.5, marginTop: 16 }}>No gifts yet. Add one above.</p>}
-        </>
-      )}
+      <ConfirmModal
+        open={!!pendingDelete}
+        title="Delete this gift?"
+        body={pendingDelete?.title}
+        confirmLabel="Delete"
+        destructive={true}
+        onConfirm={() => performDelete(pendingDelete)}
+        onCancel={() => setPendingDelete(null)}
+      />
     </div>
   );
 }
