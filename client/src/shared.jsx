@@ -600,11 +600,11 @@ const SCHEDULE = [
 ];
 
 const FAQS = [
-  ['Can we bring our children?', 'No — Unless we explicitly mention it in the invite, we will keep this event adult only'],
-  ['Where should we stay?', 'There are plenty of hotels, B&B\'s available in the surrounding area. There will also be a taxi service available'],
-  ['What about the weather?', 'Belgian August is mild and green — expect 22–26°C in the afternoon, cool and breezy by evening. A light layer for after dinner is wise. (Rain is always possible.. its Belgium after all)'],
-  ['Is there parking on site?', 'Plenty — and there is a taxi service available!'],
-  ['Can we contribute photos?', 'Please do. We\'ll have a shared album, and you\'re welcome to tag #JonasAndDragana.'],
+  ['Can we bring our children?', 'Mostly an adults\' affair — unless we\'ve named your little ones on your invitation, we\'d love for you to come without them. We promise to dance enough for everyone.'],
+  ['Where should we stay?', 'A handful of hotels and B&Bs sit within easy reach of the venue — we\'ll share a few favourites closer to the date.'],
+  ['What about the weather?', 'Belgian August is mild and green — expect 22–26°C in the afternoon, cool and breezy by evening. A light layer for after dinner is wise. (And rain is always possible — it\'s Belgium, after all.)'],
+  ['Is there parking on site?', 'Plenty on site — and a taxi service running through the evening if you\'d rather not drive.'],
+  ['Can we contribute photos?', 'Please do. We\'ll have a shared album, and you\'re welcome to tag #D&J2026.'],
   ['Plus-ones?', 'If your invitation names a plus-one, absolutely. Otherwise we\'re keeping the day intimate — we hope you understand.'],
 ];
 

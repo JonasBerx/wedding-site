@@ -83,7 +83,7 @@ function HeroSection({ t, fonts }) {
           <div style={{
             fontFamily: fonts.script, fontSize: isMobile ? 20 : 26, color: t.inkSoft,
             textAlign: 'center', marginTop: 10, lineHeight: 1,
-          }}>five years, in five frames</div>
+          }}>five years, in frames</div>
         </div>
       </div>
     </section>

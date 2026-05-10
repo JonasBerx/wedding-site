@@ -66,7 +66,7 @@ function VenueSection({ t, fonts }) {
           }}>
             {[
               ['where', 'Rekhovenstraat 20, 3560 Lummen'],
-              ['by air', 'Brussels (BRU) — 1h drive\nEindhoven (EIN) — 50 min'],
+              ['by air', 'Brussels (BRU) — 1h drive\nEindhoven (EIN) — 50 min drive'],
               ['by car', 'Hasselt — 15 min\nLeuven — 35 min'],
               ['by train & bus', 'Hasselt — 40 min\nLeuven — 1.5hr'],
               ['parking', 'Plenty on site, signed from the main road.'],
