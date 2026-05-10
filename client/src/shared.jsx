@@ -188,6 +188,21 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
     setForm(prev => ({ ...prev, ...patch }));
   }
 
+  async function handleEmailBlur() {
+    const e = (form.email || '').trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) return;
+    if (e === lookupEmail) return;
+    if (editedSinceLoad.current) return;
+    setLookupEmail(e);
+    try {
+      const res = await fetch(`/api/rsvp?email=${encodeURIComponent(e)}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.deadline_passed) setReadOnly(true);
+      if (data.rsvp) setPrefillCandidate(data.rsvp);
+    } catch {}
+  }
+
   const inputStyle = {
     width: '100%',
     padding: '14px 0 10px',
@@ -324,8 +339,40 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
         <span style={labelStyle}>Email</span>
         <input style={inputStyle} type="email" value={form.email} disabled={disabled}
           onChange={(e) => setForm({ ...form, email: e.target.value })}
+          onBlur={handleEmailBlur}
           placeholder="you@example.com" />
       </div>
+
+      {prefillCandidate && (
+        <div style={{
+          padding: '12px 14px',
+          border: `1px solid ${theme.rule}`,
+          background: `${theme.accentSoft}22`,
+          fontFamily: bodyFont, fontSize: 15, color: theme.ink,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          gap: 12, flexWrap: 'wrap',
+        }}>
+          <span>We found a reply for <em>{prefillCandidate.email}</em>.</span>
+          <span style={{ display: 'flex', gap: 14 }}>
+            <button type="button"
+              onClick={() => { prefillFromRsvp(prefillCandidate); setPrefillCandidate(null); }}
+              style={{
+                background: 'transparent', color: theme.accent,
+                border: 'none', cursor: 'pointer',
+                fontFamily: labelFont, fontSize: 12, letterSpacing: '0.18em',
+                textTransform: 'uppercase', padding: 0,
+              }}>Load it</button>
+            <button type="button"
+              onClick={() => setPrefillCandidate(null)}
+              style={{
+                background: 'transparent', color: theme.label,
+                border: 'none', cursor: 'pointer',
+                fontFamily: labelFont, fontSize: 12, letterSpacing: '0.18em',
+                textTransform: 'uppercase', padding: 0,
+              }}>Dismiss</button>
+          </span>
+        </div>
+      )}
 
       {/* Attending radio */}
       <div>
