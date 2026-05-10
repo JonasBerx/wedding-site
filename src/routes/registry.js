@@ -36,7 +36,8 @@ function createRegistryRouter(db) {
     if (!item) return res.status(404).json({ error: 'Item not found' });
     if (item.claimed_by_rsvp_id !== null) return res.status(409).json({ error: 'Item is already claimed' });
 
-    db.claimRegistryItem(item_id, rsvp.id);
+    const claimResult = db.claimRegistryItem(item_id, rsvp.id);
+    if (claimResult.changes === 0) return res.status(409).json({ error: 'Item is already claimed' });
     res.json({ ok: true });
   });
 
