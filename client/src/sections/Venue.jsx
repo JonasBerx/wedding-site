@@ -2,6 +2,9 @@
 import React from 'react';
 import { SectionHead } from './helpers';
 import { PhotoPlaceholder } from '../shared';
+import picsTxt from '../assets/location/pics.txt?raw';
+
+const LOCATION_PICS = picsTxt.trim().split('\n').map(s => s.trim()).filter(Boolean);
 
 function VenueSection({ t, fonts }) {
   return (
@@ -13,13 +16,13 @@ function VenueSection({ t, fonts }) {
       <div style={{ display: 'grid', gridTemplateColumns: '1.05fr 1fr', gap: 70, alignItems: 'flex-start' }}>
         <div style={{ position: 'relative', height: 520 }}>
           <div style={{ position: 'absolute', top: 0, left: 20 }}>
-            <PhotoPlaceholder width={300} height={380} label="the courtyard" theme={t} rotate={-2.5} />
+            <PhotoPlaceholder width={300} height={380} label="the courtyard" theme={t} rotate={-2.5} src={LOCATION_PICS[0]} />
           </div>
           <div style={{ position: 'absolute', top: 90, left: 290 }}>
-            <PhotoPlaceholder width={220} height={280} label="the woods" theme={t} rotate={3} />
+            <PhotoPlaceholder width={220} height={280} label="the woods" theme={t} rotate={3} src={LOCATION_PICS[1]} />
           </div>
           <div style={{ position: 'absolute', top: 320, left: 130 }}>
-            <PhotoPlaceholder width={260} height={180} label="the chestnut tree" theme={t} rotate={-1} />
+            <PhotoPlaceholder width={260} height={180} label="the chestnut tree" theme={t} rotate={-1} src={LOCATION_PICS[2]} />
           </div>
         </div>
 

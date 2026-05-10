@@ -1,4 +1,10 @@
 import React from 'react';
+import firstDate from './assets/gallery/first-date.jpeg';
+import firstPeru from './assets/gallery/first-peru.jpeg';
+import firstSerbia from './assets/gallery/first-serbia.jpeg';
+import firstWedding from './assets/gallery/first-wedding.jpeg';
+import proposalImg from './assets/gallery/proposal.jpeg';
+import secondSerbia from './assets/gallery/second-serbia.jpeg';
 
 // Shared building blocks for both wedding-website variations.
 // Hooks: useCountdown · useTweaks-aware mode (light/dark) · usePalette
@@ -367,23 +373,42 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
 // because we don't have real photos yet. Borrowed from the default
 // aesthetic guidance.
 // ─────────────────────────────────────────────────────────────
-function PhotoPlaceholder({ width = 220, height = 280, label = 'photo', theme, rotate = 0 }) {
+function PhotoPlaceholder({ width = 220, height = 280, label = 'photo', theme, rotate = 0, src }) {
   const stripe = `repeating-linear-gradient(45deg, ${theme.sand}33 0, ${theme.sand}33 6px, transparent 6px, transparent 14px)`;
   return (
     <div style={{
       width, height, background: theme.paper, position: 'relative',
-      backgroundImage: stripe,
+      backgroundImage: src ? 'none' : stripe,
       transform: `rotate(${rotate}deg)`,
       boxShadow: `0 1px 3px rgba(0,0,0,.05), 0 8px 24px rgba(0,0,0,.04)`,
       border: `1px solid ${theme.rule}`,
+      overflow: 'hidden',
     }}>
-      <div style={{
-        position: 'absolute', inset: 0,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace',
-        fontSize: 11, color: theme.label, letterSpacing: '0.18em',
-        textTransform: 'uppercase',
-      }}>{label}</div>
+      {src && (
+        <img src={src} alt={label} style={{
+          position: 'absolute', inset: 0,
+          width: '100%', height: '100%', objectFit: 'cover', display: 'block',
+        }} />
+      )}
+      {!src && (
+        <div style={{
+          position: 'absolute', inset: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace',
+          fontSize: 11, color: theme.label, letterSpacing: '0.18em',
+          textTransform: 'uppercase',
+        }}>{label}</div>
+      )}
+      {src && label && (
+        <div style={{
+          position: 'absolute', bottom: 10, left: '50%', transform: 'translateX(-50%)',
+          fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace',
+          fontSize: 10, color: theme.label, letterSpacing: '0.18em',
+          textTransform: 'uppercase',
+          background: `${theme.bg}d0`, padding: '4px 10px',
+          whiteSpace: 'nowrap',
+        }}>{label}</div>
+      )}
     </div>
   );
 }
@@ -464,14 +489,17 @@ function HeroCarousel({ items, theme, width = 640, height = 380, interval = 4200
         boxShadow: frame === 'shadow' ? `0 12px 40px rgba(0,0,0,.08), 0 2px 6px rgba(0,0,0,.04)` : 'none',
         border: `1px solid ${theme.rule}`,
       }}>
-      {items.map((label, i) => {
+      {items.map((item, i) => {
+        const isString = typeof item === 'string';
+        const src = isString ? null : item.src;
+        const label = isString ? item : item.label;
         const active = i === idx;
         return (
           <div key={i} style={{
             position: 'absolute', inset: 0,
             opacity: active ? 1 : 0,
             transition: 'opacity 1.2s ease',
-            backgroundImage: stripe,
+            backgroundImage: src ? 'none' : stripe,
             backgroundColor: theme.paper,
             transform: active ? 'scale(1.08)' : 'scale(1)',
             transformOrigin: ['center center', 'top right', 'bottom left', 'top left', 'bottom right'][i % 5],
@@ -481,12 +509,21 @@ function HeroCarousel({ items, theme, width = 640, height = 380, interval = 4200
             display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
             padding: 24,
           }}>
-            <div style={{
-              fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace',
-              fontSize: 11, letterSpacing: '0.18em',
-              textTransform: 'uppercase', color: theme.label,
-              background: `${theme.bg}cc`, padding: '6px 12px',
-            }}>{label}</div>
+            {src && (
+              <img src={src} alt={label || ''} style={{
+                position: 'absolute', inset: 0,
+                width: '100%', height: '100%', objectFit: 'cover', display: 'block',
+              }} />
+            )}
+            {label && (
+              <div style={{
+                position: 'relative', zIndex: 1,
+                fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace',
+                fontSize: 11, letterSpacing: '0.18em',
+                textTransform: 'uppercase', color: theme.label,
+                background: `${theme.bg}cc`, padding: '6px 12px',
+              }}>{label}</div>
+            )}
           </div>
         );
       })}
@@ -510,11 +547,12 @@ function HeroCarousel({ items, theme, width = 640, height = 380, interval = 4200
 }
 
 const CAROUSEL_ITEMS = [
-  'first hike, summer 2021',
-  'kitchen, sundays',
-  'the proposal · cap d’antibes',
-  'the orchard · april',
-  'us, mostly laughing',
+  { src: firstDate,    label: 'first date' },
+  { src: firstSerbia,    label: 'first time serbia' },
+  { src: secondSerbia,  label: 'serbia, AGAIN!' },
+  { src: firstPeru, label: 'peru' },
+  { src: proposalImg,  label: 'the proposal' },
+  { src: firstWedding, label: 'dressup time' },
 ];
 
 export {
