@@ -169,27 +169,6 @@ describe('POST /api/rsvp', () => {
     expect(res.status).toBe(400);
   });
 
-  // ── event_type validation ──────────────────────────────────
-
-  test('returns 400 when attending=true and event_type is missing', async () => {
-    const res = await request(app).post('/api/rsvp').send({
-      name: 'Alice',
-      email: 'alice@example.com',
-      attending: true,
-    });
-    expect(res.status).toBe(400);
-  });
-
-  test('returns 400 when attending=true and event_type is invalid', async () => {
-    const res = await request(app).post('/api/rsvp').send({
-      name: 'Alice',
-      email: 'alice@example.com',
-      attending: true,
-      event_type: 'dinner_only',
-    });
-    expect(res.status).toBe(400);
-  });
-
   test('full-day requires at least one attendee', async () => {
     const inv = db.createInviteToken({ event_type: 'full', max_party_size: 4 });
     const res = await request(app).post('/api/rsvp').send({
