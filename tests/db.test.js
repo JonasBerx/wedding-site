@@ -279,6 +279,36 @@ describe('rsvp_attendees schema', () => {
   });
 });
 
+describe('countRsvpsForMenuItem (attendee-based)', () => {
+  test('counts attendee rows referencing the menu item', () => {
+    const db = initDb(':memory:');
+    const f = db.insertMenuItem({ course: 'first', name: 'X' }).lastInsertRowid;
+    const m = db.insertMenuItem({ course: 'main',  name: 'Y' }).lastInsertRowid;
+    db.upsertRsvp({
+      name: 'A', email: 'a@x.com', attending: 1, event_type: 'full',
+      attendees: [
+        { name: 'A', first_course_id: f, main_course_id: m },
+        { name: 'B', first_course_id: f, main_course_id: m },
+      ],
+    });
+    expect(db.countRsvpsForMenuItem(f)).toBe(2);
+    expect(db.countRsvpsForMenuItem(m)).toBe(2);
+    db.close();
+  });
+
+  test('deleteMenuItem is blocked when an attendee picked it', () => {
+    const db = initDb(':memory:');
+    const f = db.insertMenuItem({ course: 'first', name: 'X' }).lastInsertRowid;
+    const m = db.insertMenuItem({ course: 'main',  name: 'Y' }).lastInsertRowid;
+    db.upsertRsvp({
+      name: 'A', email: 'a@x.com', attending: 1, event_type: 'full',
+      attendees: [{ name: 'A', first_course_id: f, main_course_id: m }],
+    });
+    expect(db.deleteMenuItem(f)).toEqual({ changes: 0, blocked: true });
+    db.close();
+  });
+});
+
 describe('getMealCounts', () => {
   test('aggregates per-dish counts from attending=full attendees only', () => {
     const db = initDb(':memory:');

@@ -205,7 +205,7 @@ function initDb(path = 'rsvps.db') {
 
     countRsvpsForMenuItem(id) {
       return db.prepare(
-        'SELECT COUNT(*) AS n FROM rsvps WHERE first_course_id = :id OR main_course_id = :id'
+        'SELECT COUNT(*) AS n FROM rsvp_attendees WHERE first_course_id = :id OR main_course_id = :id'
       ).get({ id }).n;
     },
 
@@ -213,7 +213,7 @@ function initDb(path = 'rsvps.db') {
       const item = db.prepare('SELECT * FROM menu_items WHERE id = :id').get({ id });
       if (!item) return { changes: 0, blocked: false };
       const refs = db.prepare(
-        'SELECT COUNT(*) AS n FROM rsvps WHERE first_course_id = :id OR main_course_id = :id'
+        'SELECT COUNT(*) AS n FROM rsvp_attendees WHERE first_course_id = :id OR main_course_id = :id'
       ).get({ id }).n;
       if (refs > 0) return { changes: 0, blocked: true };
       let result;
