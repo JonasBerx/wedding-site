@@ -58,7 +58,9 @@ function GallerySection({ t, fonts }) {
         transform: 'rotate(-1.5deg)', display: 'flex',
         justifyContent: 'center', gap: 12, flexWrap: 'wrap',
       }}>
-        add yours: <span style={{ fontStyle: 'italic' }}>#D&J2026</span>
+        <a href="/photos" style={{ color: t.accent, textDecoration: 'underline' }}>
+          add yours →
+        </a>
       </div>
     </section>
   );
