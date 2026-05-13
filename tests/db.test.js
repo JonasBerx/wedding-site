@@ -149,3 +149,30 @@ describe('initDb', () => {
     expect(after.updated_at).toBeTruthy();
   });
 });
+
+describe('rsvp_attendees schema', () => {
+  test('rsvp_attendees table exists with the expected columns', () => {
+    const db = initDb(':memory:');
+    const cols = db._tableInfo('rsvp_attendees').map(c => c.name);
+    expect(cols).toEqual(expect.arrayContaining([
+      'id','rsvp_id','position','name','first_course_id','main_course_id','dietary_restrictions',
+    ]));
+    db.close();
+  });
+
+  test('initDb drops legacy rsvps with first_course_id/main_course_id on the row', () => {
+    const { DatabaseSync } = require('node:sqlite');
+    const path = require('node:path').join(require('node:os').tmpdir(), `wedplan-${Date.now()}.db`);
+    const raw = new DatabaseSync(path);
+    raw.exec(`CREATE TABLE rsvps (id INTEGER PRIMARY KEY, name TEXT, email TEXT UNIQUE,
+              attending INTEGER, event_type TEXT, first_course_id INTEGER, main_course_id INTEGER,
+              dietary_restrictions TEXT, submitted_at TEXT, updated_at TEXT)`);
+    raw.exec(`INSERT INTO rsvps (name, email, attending) VALUES ('Old','old@x.com',1)`);
+    raw.close();
+
+    const db = initDb(path);
+    expect(db.getRsvpByEmail('old@x.com')).toBeNull();
+    db.close();
+    require('node:fs').unlinkSync(path);
+  });
+});

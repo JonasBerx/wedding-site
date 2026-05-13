@@ -3,15 +3,23 @@ const { DatabaseSync } = require('node:sqlite');
 function initDb(path = 'rsvps.db') {
   const db = new DatabaseSync(path);
 
-  // ── rsvps: drop the old shape and recreate. The site has no real RSVPs
-  // yet; this is a destructive reset by design. The guard now also requires
-  // `updated_at` (proxy for the editable-RSVPs schema) and a UNIQUE index on
-  // email so upserts work.
-  const rsvpCols = db.prepare("PRAGMA table_info(rsvps)").all().map(c => c.name);
-  const hasOldShape = rsvpCols.includes('is_vegan') || rsvpCols.includes('meal_preference');
-  const hasNewShape = rsvpCols.includes('first_course_id') && rsvpCols.includes('main_course_id');
+  // ── rsvps shape guard. The site has no real RSVPs yet; this is a
+  // destructive reset by design. We drop and rebuild if:
+  //   (a) the legacy single-meal columns are present on rsvps, or
+  //   (b) the rsvp_attendees child table is missing, or
+  //   (c) the previous editable-RSVP markers (updated_at, UNIQUE(email)) are missing.
+  const tableNames = db.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table'"
+  ).all().map(r => r.name);
+  const rsvpCols = tableNames.includes('rsvps')
+    ? db.prepare('PRAGMA table_info(rsvps)').all().map(c => c.name)
+    : [];
+  const hasLegacyMealCols = rsvpCols.includes('first_course_id') || rsvpCols.includes('main_course_id')
+                         || rsvpCols.includes('is_vegan') || rsvpCols.includes('meal_preference');
   const hasUpdatedAt = rsvpCols.includes('updated_at');
-  if (hasOldShape || (rsvpCols.length > 0 && (!hasNewShape || !hasUpdatedAt))) {
+  const hasAttendeesTable = tableNames.includes('rsvp_attendees');
+  if (rsvpCols.length > 0 && (hasLegacyMealCols || !hasUpdatedAt || !hasAttendeesTable)) {
+    db.exec('DROP TABLE IF EXISTS rsvp_attendees');
     db.exec('DROP TABLE rsvps');
   }
 
@@ -34,13 +42,26 @@ function initDb(path = 'rsvps.db') {
       email TEXT NOT NULL UNIQUE,
       attending INTEGER NOT NULL,
       event_type TEXT,
-      first_course_id INTEGER REFERENCES menu_items(id),
-      main_course_id INTEGER REFERENCES menu_items(id),
       dietary_restrictions TEXT,
       submitted_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')),
       updated_at TEXT
     )
   `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS rsvp_attendees (
+      id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+      rsvp_id               INTEGER NOT NULL REFERENCES rsvps(id) ON DELETE CASCADE,
+      position              INTEGER NOT NULL,
+      name                  TEXT NOT NULL,
+      first_course_id       INTEGER REFERENCES menu_items(id),
+      main_course_id        INTEGER REFERENCES menu_items(id),
+      dietary_restrictions  TEXT
+    )
+  `);
+
+  db.exec(`CREATE INDEX IF NOT EXISTS rsvp_attendees_rsvp_id ON rsvp_attendees(rsvp_id)`);
+  db.exec('PRAGMA foreign_keys = ON');
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS registry_items (
@@ -247,6 +268,7 @@ function initDb(path = 'rsvps.db') {
         'DELETE FROM registry_items WHERE id = :id AND claimed_by_rsvp_id IS NULL'
       ).run({ id });
     },
+    _tableInfo(name) { return db.prepare(`PRAGMA table_info(${name})`).all(); },
     close() { db.close(); },
   };
 }
