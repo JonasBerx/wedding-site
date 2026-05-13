@@ -248,6 +248,42 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
     return () => { cancelled = true; };
   }, []);
 
+  // ── Invite-token resolution ─────────────────────────────────
+  const inviteParam = React.useMemo(() => {
+    if (typeof window === 'undefined') return null;
+    const params = new URLSearchParams(window.location.search);
+    return params.get('invite');
+  }, []);
+  const [invite, setInvite] = React.useState(null);
+  const [inviteError, setInviteError] = React.useState(null); // 'not_found' | 'network' | null
+  const [inviteLoading, setInviteLoading] = React.useState(Boolean(inviteParam));
+  const [lookupResolved, setLookupResolved] = React.useState(false);
+  const [lookupBusy, setLookupBusy] = React.useState(false);
+  const [lookupNotFound, setLookupNotFound] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!inviteParam) { setInviteLoading(false); return; }
+    let cancelled = false;
+    fetch(`/api/invite/${encodeURIComponent(inviteParam)}`)
+      .then(async (r) => {
+        if (cancelled) return;
+        if (r.status === 404) { setInviteError('not_found'); return; }
+        if (!r.ok) { setInviteError('network'); return; }
+        const body = await r.json();
+        setInvite(body);
+        if (body.deadline_passed) setReadOnly(true);
+        if (body.status === 'consumed' && body.rsvp_email) {
+          setForm(prev => ({ ...prev, email: body.rsvp_email }));
+        }
+        if (body.status === 'open' || body.status === 'released') {
+          setForm(prev => ({ ...prev, eventType: body.event_type }));
+        }
+      })
+      .catch(() => { if (!cancelled) setInviteError('network'); })
+      .finally(() => { if (!cancelled) setInviteLoading(false); });
+    return () => { cancelled = true; };
+  }, [inviteParam]);
+
   const prefillFromRsvp = React.useCallback((r) => {
     setForm(prev => ({
       ...prev,
@@ -271,6 +307,11 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
   }, []);
 
   React.useEffect(() => {
+    // While invite resolution is in flight, don't prefill — we don't yet know
+    // whether to suppress it. Once resolved, suppress for open/released invites
+    // (a different household might be at this URL).
+    if (inviteParam && inviteLoading) return;
+    if (inviteParam && invite && (invite.status === 'open' || invite.status === 'released')) return;
     let cancelled = false;
     let stored = '';
     try { stored = sessionStorage.getItem('rsvpEmail') || ''; } catch {}
@@ -284,7 +325,7 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
       })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [prefillFromRsvp]);
+  }, [prefillFromRsvp, inviteParam, inviteLoading, invite]);
 
   function updateForm(patch) {
     if (!('email' in patch)) editedSinceLoad.current = true;
@@ -359,6 +400,9 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
         main_course_id:  a.mainCourseId  ? Number(a.mainCourseId)  : null,
         dietary_restrictions: a.dietary?.trim() || null,
       }));
+      if (invite && (invite.status === 'open' || invite.status === 'released')) {
+        body.token = invite.token;
+      }
     }
     try {
       const res = await fetch('/api/rsvp', {
@@ -379,6 +423,13 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
           const data = await res.json();
           if (data?.error === 'deadline_passed') {
             setReadOnly(true);
+            setUiState('error');
+            return;
+          }
+          if (data?.error === 'invite_already_used') {
+            // Flip into consumed-invite lookup mode so they can edit by email.
+            setInvite(prev => prev ? { ...prev, status: 'consumed' } : prev);
+            setLookupResolved(false);
             setUiState('error');
             return;
           }
@@ -428,6 +479,94 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
         <div style={{ fontFamily: bodyFont, fontSize: 18, color: theme.inkSoft, fontStyle: 'italic' }}>
           No worries! Come back when you know and we'll save your spot.
         </div>
+      </div>
+    );
+  }
+
+  // ── Derived form mode based on the invite resolution ─────────
+  const inviteMode =
+    inviteLoading ? 'loading' :
+    inviteError === 'not_found' ? 'invalid_invite' :
+    inviteError ? 'invite_error' :
+    invite && invite.status === 'consumed' ? 'consumed' :
+    invite ? 'invite_open' : // 'open' or 'released'
+    'no_invite';
+
+  if (inviteMode === 'loading') {
+    return (
+      <div style={{ textAlign: 'center', padding: '60px 0', fontFamily: bodyFont, color: theme.inkSoft, fontStyle: 'italic' }}>
+        Loading invite…
+      </div>
+    );
+  }
+  if (inviteMode === 'invalid_invite' || inviteMode === 'invite_error') {
+    return (
+      <div style={{ textAlign: 'center', padding: '40px 0', fontFamily: bodyFont, color: theme.ink }}>
+        <p style={{ fontSize: 16, lineHeight: 1.5 }}>
+          This invite link isn't valid. Please reach out to us and we'll send a fresh one.
+        </p>
+      </div>
+    );
+  }
+
+  // Email-lookup-only view (consumed invite, or no invite param).
+  // Once a lookup succeeds, lookupResolved flips true and the full form renders below.
+  if ((inviteMode === 'consumed' || inviteMode === 'no_invite') && !lookupResolved) {
+    const inputStyle = {
+      width: '100%', padding: '14px 0 10px', border: 'none',
+      borderBottom: `1px solid ${theme.rule}`, background: 'transparent',
+      fontFamily: bodyFont, fontSize: 17, color: theme.ink,
+      outline: 'none', borderRadius: 0, transition: 'border-color .2s',
+    };
+    const labelStyle = {
+      fontFamily: labelFont, fontSize: 11, letterSpacing: '0.28em',
+      textTransform: 'uppercase', color: theme.label,
+      marginBottom: 4, display: 'block',
+    };
+    const onFind = async () => {
+      const e = (form.email || '').trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) return;
+      setLookupBusy(true); setLookupNotFound(false);
+      try {
+        const res = await fetch(`/api/rsvp?email=${encodeURIComponent(e)}`);
+        const data = res.ok ? await res.json() : null;
+        if (data?.deadline_passed) setReadOnly(true);
+        if (data?.rsvp) { prefillFromRsvp(data.rsvp); setLookupResolved(true); }
+        else { setLookupNotFound(true); }
+      } catch { setLookupNotFound(true); }
+      finally { setLookupBusy(false); }
+    };
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
+        <p style={{ fontFamily: bodyFont, fontSize: 16, color: theme.ink, margin: 0, lineHeight: 1.5 }}>
+          {inviteMode === 'consumed'
+            ? "This invite has already been used. Enter your email to view or edit your RSVP."
+            : "Already submitted? Enter your email to edit your response."}
+        </p>
+        <div>
+          <span style={labelStyle}>Email</span>
+          <input type="email" value={form.email} style={inputStyle}
+            disabled={lookupBusy}
+            onChange={(e) => setForm(prev => ({ ...prev, email: e.target.value }))}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onFind(); } }}
+            placeholder="you@example.com" />
+        </div>
+        {lookupNotFound && (
+          <p style={{ color: theme.accent, fontSize: 14, fontFamily: bodyFont, margin: 0 }}>
+            We don't have an RSVP for that email. Please use the invite link we sent you to submit a new RSVP.
+          </p>
+        )}
+        <button type="button" disabled={lookupBusy} onClick={onFind}
+          style={{
+            alignSelf: 'flex-start', padding: '14px 36px',
+            background: theme.accent, color: theme.paper, border: 'none',
+            fontFamily: labelFont, fontSize: 12, letterSpacing: '0.32em',
+            textTransform: 'uppercase', cursor: lookupBusy ? 'default' : 'pointer',
+            borderRadius: 0, opacity: lookupBusy ? 0.6 : 1,
+            transition: 'background .2s, transform .2s, opacity .2s',
+          }}>
+          {lookupBusy ? 'Looking…' : 'Find my RSVP'}
+        </button>
       </div>
     );
   }
@@ -531,27 +670,45 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
         </div>
       </div>
 
-      {/* Event type toggle */}
-      {form.attending === 'yes' && (
+      {/* Event type — caption for invite_open, disabled radios for edit mode, normal otherwise */}
+      {form.attending === 'yes' && inviteMode === 'invite_open' && (
+        <div>
+          <span style={labelStyle}>Day plan</span>
+          <div style={{
+            marginTop: 8, fontFamily: bodyFont, fontSize: 16, color: theme.ink,
+          }}>
+            You're invited to:{' '}
+            <strong>{invite.event_type === 'full' ? 'The full day' : 'The ceremony & evening reception'}</strong>
+          </div>
+        </div>
+      )}
+      {form.attending === 'yes' && inviteMode !== 'invite_open' && (
         <div>
           <span style={labelStyle}>Day plan</span>
           <div style={{ display: 'flex', gap: 24, marginTop: 8, flexWrap: 'wrap' }}>
-            {[['full', 'Full day (ceremony + dinner + party)'], ['ceremony_party', 'Ceremony or evening only']].map(([val, lbl]) => (
-              <label key={val} style={{
-                display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer',
-                fontFamily: bodyFont, fontSize: 16, color: theme.ink,
-              }}>
-                <RadioDot selected={form.eventType === val} />
-                <input type="radio" name="eventType" value={val}
-                  checked={form.eventType === val}
-                  onChange={() => {
-                    updateForm({ eventType: val });
-                    setAttendees(prev => prev.map(a => ({ ...a, firstCourseId: '', mainCourseId: '' })));
-                  }}
-                  style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }} />
-                {lbl}
-              </label>
-            ))}
+            {[['full', 'Full day (ceremony + dinner + party)'], ['ceremony_party', 'Ceremony or evening only']].map(([val, lbl]) => {
+              const radiosDisabled = (inviteMode === 'consumed' || inviteMode === 'no_invite') && lookupResolved;
+              return (
+                <label key={val} style={{
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  cursor: radiosDisabled ? 'default' : 'pointer',
+                  opacity: radiosDisabled ? 0.6 : 1,
+                  fontFamily: bodyFont, fontSize: 16, color: theme.ink,
+                }}>
+                  <RadioDot selected={form.eventType === val} />
+                  <input type="radio" name="eventType" value={val}
+                    checked={form.eventType === val}
+                    disabled={radiosDisabled}
+                    onChange={() => {
+                      if (radiosDisabled) return;
+                      updateForm({ eventType: val });
+                      setAttendees(prev => prev.map(a => ({ ...a, firstCourseId: '', mainCourseId: '' })));
+                    }}
+                    style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }} />
+                  {lbl}
+                </label>
+              );
+            })}
           </div>
         </div>
       )}
@@ -619,7 +776,7 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
                   }}
                 />
               ))}
-              {attendees.length < 6 && (
+              {attendees.length < (inviteMode === 'invite_open' && invite ? invite.max_party_size : 6) && (
                 <button type="button" disabled={disabled}
                   onClick={() => {
                     editedSinceLoad.current = true;
