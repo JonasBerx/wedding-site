@@ -133,14 +133,28 @@ function stripHtml(s) {
 function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send our reply' }) {
   const isMobile = useIsMobile();
   const [form, setForm] = React.useState({
-    names: '', email: '', attending: 'yes', guests: 2, diet: '', song: '',
-    eventType: 'full', firstCourseId: '', mainCourseId: '',
+    names: '', email: '', attending: 'yes', song: '',
+    eventType: 'full',
+    partyNote: '',
   });
+  const [attendees, setAttendees] = React.useState([
+    { name: '', firstCourseId: '', mainCourseId: '', dietary: '' },
+  ]);
   const [uiState, setUiState] = React.useState('idle');
   const [readOnly, setReadOnly] = React.useState(false);
   const [prefillCandidate, setPrefillCandidate] = React.useState(null);
   const [lookupEmail, setLookupEmail] = React.useState('');
   const editedSinceLoad = React.useRef(false);
+  function setLeadName(value) {
+    setForm(prev => ({ ...prev, names: value }));
+    setAttendees(prev => {
+      if (prev.length === 0) return [{ name: value, firstCourseId: '', mainCourseId: '', dietary: '' }];
+      const copy = prev.slice();
+      copy[0] = { ...copy[0], name: value };
+      return copy;
+    });
+  }
+
   const [releasedGift, setReleasedGift] = React.useState(null);
   const [menu, setMenu] = React.useState(null);
   React.useEffect(() => {
@@ -159,10 +173,17 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
       email: r.email || '',
       attending: r.attending === 1 ? 'yes' : 'no',
       eventType: r.event_type || 'full',
-      firstCourseId: r.first_course_id != null ? String(r.first_course_id) : '',
-      mainCourseId:  r.main_course_id  != null ? String(r.main_course_id)  : '',
-      diet: r.dietary_restrictions || '',
+      partyNote: r.dietary_restrictions || '',
     }));
+    const list = Array.isArray(r.attendees) && r.attendees.length > 0
+      ? r.attendees.map(a => ({
+          name: a.name || '',
+          firstCourseId: a.first_course_id != null ? String(a.first_course_id) : '',
+          mainCourseId:  a.main_course_id  != null ? String(a.main_course_id)  : '',
+          dietary:       a.dietary_restrictions || '',
+        }))
+      : [{ name: r.name || '', firstCourseId: '', mainCourseId: '', dietary: '' }];
+    setAttendees(list);
     setLookupEmail(r.email || '');
     editedSinceLoad.current = false;
   }, []);
@@ -233,7 +254,7 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
       return;
     }
     if (form.attending === 'yes' && form.eventType === 'full' &&
-        (!form.firstCourseId || !form.mainCourseId)) {
+        attendees.some(a => !a.firstCourseId || !a.mainCourseId)) {
       return;
     }
     setUiState('submitting');
@@ -241,14 +262,16 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
       name: form.names,
       email: form.email,
       attending: form.attending === 'yes',
-      dietary_restrictions: form.diet || null,
+      dietary_restrictions: form.partyNote || null,
     };
     if (form.attending === 'yes') {
       body.event_type = form.eventType;
-      if (form.eventType === 'full') {
-        body.first_course_id = Number(form.firstCourseId);
-        body.main_course_id  = Number(form.mainCourseId);
-      }
+      body.attendees = attendees.map(a => ({
+        name: a.name?.trim() || form.names,
+        first_course_id: a.firstCourseId ? Number(a.firstCourseId) : null,
+        main_course_id:  a.mainCourseId  ? Number(a.mainCourseId)  : null,
+        dietary_restrictions: a.dietary?.trim() || null,
+      }));
     }
     try {
       const res = await fetch('/api/rsvp', {
@@ -357,7 +380,7 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
       <div>
         <span style={labelStyle}>Names</span>
         <input style={inputStyle} value={form.names} disabled={disabled}
-          onChange={(e) => updateForm({ names: e.target.value })}
+          onChange={(e) => { editedSinceLoad.current = true; setLeadName(e.target.value); }}
           placeholder="Camille &amp; Olivier" />
       </div>
 
@@ -434,7 +457,10 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
                 <RadioDot selected={form.eventType === val} />
                 <input type="radio" name="eventType" value={val}
                   checked={form.eventType === val}
-                  onChange={() => updateForm({ eventType: val, firstCourseId: '', mainCourseId: '' })}
+                  onChange={() => {
+                    updateForm({ eventType: val });
+                    setAttendees(prev => prev.map(a => ({ ...a, firstCourseId: '', mainCourseId: '' })));
+                  }}
                   style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }} />
                 {lbl}
               </label>
@@ -460,14 +486,22 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
             const list = menu.filter(i => i.course === course);
             const stateKey = course === 'first' ? 'firstCourseId' : 'mainCourseId';
             const heading  = course === 'first' ? 'First course' : 'Main course';
+            const value = attendees[0]?.[stateKey] ?? '';
             return (
               <div key={course}>
                 <span style={labelStyle}>{heading}</span>
                 <select
                   required
-                  value={form[stateKey]}
+                  value={value}
                   disabled={disabled}
-                  onChange={(e) => updateForm({ [stateKey]: e.target.value })}
+                  onChange={(e) => {
+                    editedSinceLoad.current = true;
+                    setAttendees(prev => {
+                      const copy = prev.slice();
+                      copy[0] = { ...copy[0], [stateKey]: e.target.value };
+                      return copy;
+                    });
+                  }}
                   style={{ ...inputStyle, padding: '10px 0 10px', appearance: 'auto' }}
                 >
                   <option value="" disabled>— pick one —</option>
@@ -483,20 +517,12 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
         </>
       )}
 
-      {/* Guests + Dietary */}
-      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '120px 1fr', gap: isMobile ? 26 : 32 }}>
-        <div>
-          <span style={labelStyle}>Guests</span>
-          <input style={inputStyle} type="number" min="1" max="6" disabled={disabled}
-            value={form.guests}
-            onChange={(e) => updateForm({ guests: e.target.value })} />
-        </div>
-        <div>
-          <span style={labelStyle}>Dietary notes</span>
-          <input style={inputStyle} disabled={disabled} value={form.diet}
-            onChange={(e) => updateForm({ diet: e.target.value })}
-            placeholder="allergies, etc." />
-        </div>
+      {/* Party-wide note */}
+      <div>
+        <span style={labelStyle}>Anything we should know? (optional)</span>
+        <input style={inputStyle} disabled={disabled} value={form.partyNote}
+          onChange={(e) => updateForm({ partyNote: e.target.value })}
+          placeholder="arrival time, accessibility, etc." />
       </div>
 
       {/* Song */}
