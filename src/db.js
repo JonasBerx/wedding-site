@@ -88,7 +88,7 @@ function initDb(path = 'rsvps.db') {
       `).run({ name, email, attending, event_type, first_course_id, main_course_id, dietary_restrictions });
     },
 
-    upsertRsvp({ name, email, attending, event_type = null, first_course_id = null, main_course_id = null, dietary_restrictions = null }) {
+    upsertRsvp({ name, email, attending, event_type = null, dietary_restrictions = null, attendees = [] }) {
       const normEmail = String(email || '').trim().toLowerCase();
       db.exec('BEGIN IMMEDIATE');
       try {
@@ -100,26 +100,38 @@ function initDb(path = 'rsvps.db') {
               name = :name,
               attending = :attending,
               event_type = :event_type,
-              first_course_id = :first_course_id,
-              main_course_id = :main_course_id,
               dietary_restrictions = :dietary_restrictions,
               updated_at = strftime('%Y-%m-%dT%H:%M:%f','now')
             WHERE id = :id
-          `).run({
-            id: existing.id, name, attending,
-            event_type, first_course_id, main_course_id, dietary_restrictions,
-          });
+          `).run({ id: existing.id, name, attending, event_type, dietary_restrictions });
           outcome = { id: existing.id, was_update: true, prev_attending: existing.attending };
         } else {
           const result = db.prepare(`
-            INSERT INTO rsvps (name, email, attending, event_type, first_course_id, main_course_id, dietary_restrictions)
-            VALUES (:name, :email, :attending, :event_type, :first_course_id, :main_course_id, :dietary_restrictions)
-          `).run({
-            name, email: normEmail, attending,
-            event_type, first_course_id, main_course_id, dietary_restrictions,
-          });
+            INSERT INTO rsvps (name, email, attending, event_type, dietary_restrictions)
+            VALUES (:name, :email, :attending, :event_type, :dietary_restrictions)
+          `).run({ name, email: normEmail, attending, event_type, dietary_restrictions });
           outcome = { id: result.lastInsertRowid, was_update: false, prev_attending: null };
         }
+
+        db.prepare('DELETE FROM rsvp_attendees WHERE rsvp_id = :id').run({ id: outcome.id });
+
+        if (attending === 1 && Array.isArray(attendees) && attendees.length > 0) {
+          const ins = db.prepare(`
+            INSERT INTO rsvp_attendees (rsvp_id, position, name, first_course_id, main_course_id, dietary_restrictions)
+            VALUES (:rsvp_id, :position, :name, :first_course_id, :main_course_id, :dietary_restrictions)
+          `);
+          attendees.forEach((a, idx) => {
+            ins.run({
+              rsvp_id: outcome.id,
+              position: idx + 1,
+              name: a.name,
+              first_course_id: a.first_course_id ?? null,
+              main_course_id:  a.main_course_id  ?? null,
+              dietary_restrictions: a.dietary_restrictions ?? null,
+            });
+          });
+        }
+
         db.exec('COMMIT');
         return outcome;
       } catch (err) {
@@ -143,7 +155,12 @@ function initDb(path = 'rsvps.db') {
     getRsvpByEmail(email) {
       const normEmail = String(email || '').trim().toLowerCase();
       if (!normEmail) return null;
-      return db.prepare('SELECT * FROM rsvps WHERE email = :email').get({ email: normEmail }) || null;
+      const row = db.prepare('SELECT * FROM rsvps WHERE email = :email').get({ email: normEmail });
+      if (!row) return null;
+      const attendees = db.prepare(
+        'SELECT position, name, first_course_id, main_course_id, dietary_restrictions FROM rsvp_attendees WHERE rsvp_id = :id ORDER BY position'
+      ).all({ id: row.id });
+      return { ...row, attendees };
     },
 
     // ── menu_items

@@ -150,6 +150,83 @@ describe('initDb', () => {
   });
 });
 
+describe('upsertRsvp with attendees', () => {
+  let db;
+  beforeEach(() => { db = initDb(':memory:'); });
+  afterEach(() => { db.close(); });
+
+  function seedMenu() {
+    const f = db.insertMenuItem({ course: 'first', name: 'Tomato' });
+    const m = db.insertMenuItem({ course: 'main',  name: 'Lamb' });
+    return { fid: f.lastInsertRowid, mid: m.lastInsertRowid };
+  }
+
+  test('inserts attendees with positions 1..N', () => {
+    const { fid, mid } = seedMenu();
+    db.upsertRsvp({
+      name: 'Alice', email: 'a@x.com', attending: 1, event_type: 'full',
+      dietary_restrictions: null,
+      attendees: [
+        { name: 'Alice', first_course_id: fid, main_course_id: mid, dietary_restrictions: 'gf' },
+        { name: 'Bob',   first_course_id: fid, main_course_id: mid, dietary_restrictions: null },
+      ],
+    });
+    const rsvp = db.getRsvpByEmail('a@x.com');
+    expect(rsvp.attendees).toHaveLength(2);
+    expect(rsvp.attendees[0]).toMatchObject({ position: 1, name: 'Alice', dietary_restrictions: 'gf' });
+    expect(rsvp.attendees[1]).toMatchObject({ position: 2, name: 'Bob' });
+  });
+
+  test('replaces attendees on update (old rows gone, new positions)', () => {
+    const { fid, mid } = seedMenu();
+    db.upsertRsvp({
+      name: 'Alice', email: 'a@x.com', attending: 1, event_type: 'full',
+      attendees: [{ name: 'Alice', first_course_id: fid, main_course_id: mid }],
+    });
+    db.upsertRsvp({
+      name: 'Alice', email: 'a@x.com', attending: 1, event_type: 'full',
+      attendees: [
+        { name: 'Alice', first_course_id: fid, main_course_id: mid },
+        { name: 'Bob',   first_course_id: fid, main_course_id: mid },
+        { name: 'Cara',  first_course_id: fid, main_course_id: mid },
+      ],
+    });
+    const rsvp = db.getRsvpByEmail('a@x.com');
+    expect(rsvp.attendees.map(a => a.name)).toEqual(['Alice','Bob','Cara']);
+    expect(rsvp.attendees.map(a => a.position)).toEqual([1,2,3]);
+  });
+
+  test('attending=0 deletes existing attendees', () => {
+    const { fid, mid } = seedMenu();
+    db.upsertRsvp({
+      name: 'Alice', email: 'a@x.com', attending: 1, event_type: 'full',
+      attendees: [{ name: 'Alice', first_course_id: fid, main_course_id: mid }],
+    });
+    db.upsertRsvp({
+      name: 'Alice', email: 'a@x.com', attending: 0, event_type: null,
+      attendees: [],
+    });
+    const rsvp = db.getRsvpByEmail('a@x.com');
+    expect(rsvp.attendees).toEqual([]);
+    expect(rsvp.attending).toBe(0);
+  });
+
+  test('rolls back if an attendee insert fails (bad FK)', () => {
+    db.upsertRsvp({
+      name: 'Alice', email: 'a@x.com', attending: 1, event_type: 'ceremony_party',
+      attendees: [{ name: 'Alice' }],
+    });
+    expect(() => db.upsertRsvp({
+      name: 'Alice', email: 'a@x.com', attending: 1, event_type: 'full',
+      attendees: [{ name: 'Alice', first_course_id: 99999, main_course_id: 99999 }],
+    })).toThrow();
+    // Previous state survives.
+    const rsvp = db.getRsvpByEmail('a@x.com');
+    expect(rsvp.event_type).toBe('ceremony_party');
+    expect(rsvp.attendees.map(a => a.name)).toEqual(['Alice']);
+  });
+});
+
 describe('rsvp_attendees schema', () => {
   test('rsvp_attendees table exists with the expected columns', () => {
     const db = initDb(':memory:');
