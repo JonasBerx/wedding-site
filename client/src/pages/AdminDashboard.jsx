@@ -120,6 +120,12 @@ export default function AdminDashboard() {
   const [menu, setMenu] = React.useState([]);
   const [pendingMenuDelete, setPendingMenuDelete] = React.useState(null);
   const [newMenu, setNewMenu] = React.useState({ course: 'first', name: '', note: '', is_vegan: false });
+  const [invites, setInvites] = React.useState([]);
+  const [newInvite, setNewInvite] = React.useState({ event_type: 'full', max_party_size: 2, label: '' });
+  const [creatingInvite, setCreatingInvite] = React.useState(false);
+  const [copyOk, setCopyOk] = React.useState(null);
+  const [confirmReleaseId, setConfirmReleaseId] = React.useState(null);
+  const [confirmDeleteId, setConfirmDeleteId] = React.useState(null);
 
   async function apiFetch(path, creds, options = {}) {
     return fetch(path, {
@@ -133,11 +139,12 @@ export default function AdminDashboard() {
   }
 
   async function loadData(creds) {
-    const [rsvpsRes, regRes, menuRes, mealCountsRes] = await Promise.all([
+    const [rsvpsRes, regRes, menuRes, mealCountsRes, invitesRes] = await Promise.all([
       apiFetch('/api/admin/rsvps', creds),
       apiFetch('/api/admin/registry', creds),
       apiFetch('/api/admin/menu', creds),
       apiFetch('/api/admin/meal-counts', creds),
+      apiFetch('/api/admin/invites', creds),
     ]);
     if (rsvpsRes.status === 401) {
       setAuth(null);
@@ -148,6 +155,71 @@ export default function AdminDashboard() {
     setRegistry(await regRes.json());
     setMenu(await menuRes.json());
     setMealCounts(mealCountsRes.ok ? await mealCountsRes.json() : []);
+    if (invitesRes.ok) {
+      const body = await invitesRes.json();
+      setInvites(body.invites || []);
+    }
+  }
+
+  async function handleInviteCreate(e) {
+    e.preventDefault();
+    setCreatingInvite(true);
+    try {
+      const res = await apiFetch('/api/admin/invites', null, {
+        method: 'POST',
+        body: JSON.stringify({
+          event_type: newInvite.event_type,
+          max_party_size: Number(newInvite.max_party_size),
+          label: newInvite.label.trim() || null,
+        }),
+      });
+      if (!res.ok) {
+        setToast('Could not create invite.');
+        return;
+      }
+      const body = await res.json();
+      setInvites(prev => [body, ...prev]);
+      setNewInvite({ event_type: 'full', max_party_size: 2, label: '' });
+    } finally {
+      setCreatingInvite(false);
+    }
+  }
+
+  async function handleInviteCopy(inv) {
+    try {
+      await navigator.clipboard.writeText(inv.url);
+      setCopyOk(inv.id);
+      setTimeout(() => setCopyOk(prev => (prev === inv.id ? null : prev)), 1500);
+    } catch {
+      setToast('Clipboard copy failed.');
+    }
+  }
+
+  async function handleInviteRelease(id) {
+    setConfirmReleaseId(null);
+    const res = await apiFetch(`/api/admin/invites/${id}/release`, null, { method: 'POST' });
+    if (!res.ok) {
+      setToast('Release failed.');
+      return;
+    }
+    const body = await res.json();
+    setInvites(prev => prev.map(it => (it.id === id ? body.invite : it)));
+    await loadData();
+    if (body.released_gift) {
+      setToast(`Released registry item: ${body.released_gift.title}`);
+    } else {
+      setToast('Invite released.');
+    }
+  }
+
+  async function handleInviteDelete(id) {
+    setConfirmDeleteId(null);
+    const res = await apiFetch(`/api/admin/invites/${id}`, null, { method: 'DELETE' });
+    if (!res.ok) {
+      setToast('Delete failed.');
+      return;
+    }
+    setInvites(prev => prev.filter(it => it.id !== id));
   }
 
   async function handleLogin(e) {
@@ -325,6 +397,7 @@ export default function AdminDashboard() {
             { key: 'rsvps',    label: `RSVPS · ${rsvps.length}` },
             { key: 'registry', label: `REGISTRY · ${registry.length}` },
             { key: 'menu',     label: `MENU · ${menu.length}` },
+            { key: 'invites',  label: `INVITES · ${invites.length}` },
           ].map(({ key, label }) => (
             <button
               key={key}
@@ -601,6 +674,105 @@ export default function AdminDashboard() {
             })}
           </>
         )}
+
+        {tab === 'invites' && (
+          <>
+            <form
+              onSubmit={handleInviteCreate}
+              style={{
+                border: `1px solid ${RULE}`, padding: 24, marginBottom: 24,
+                display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap',
+              }}
+            >
+              <div style={{ flex: '0 0 180px' }}>
+                <label style={labelStyle}>Event type</label>
+                <select
+                  value={newInvite.event_type}
+                  onChange={e => setNewInvite(s => ({ ...s, event_type: e.target.value }))}
+                  style={inputStyle}
+                >
+                  <option value="full">Full day</option>
+                  <option value="ceremony_party">Ceremony &amp; evening</option>
+                </select>
+              </div>
+              <div style={{ flex: '0 0 100px' }}>
+                <label style={labelStyle}>Max party</label>
+                <select
+                  value={newInvite.max_party_size}
+                  onChange={e => setNewInvite(s => ({ ...s, max_party_size: e.target.value }))}
+                  style={inputStyle}
+                >
+                  {[1,2,3,4,5,6].map(n => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </div>
+              <div style={{ flex: '1 1 200px' }}>
+                <label style={labelStyle}>Label (optional)</label>
+                <input
+                  type="text"
+                  value={newInvite.label}
+                  maxLength={120}
+                  onChange={e => setNewInvite(s => ({ ...s, label: e.target.value }))}
+                  style={inputStyle}
+                />
+              </div>
+              <button type="submit" style={primaryButton} disabled={creatingInvite}>
+                {creatingInvite ? 'Creating…' : '+ New invite'}
+              </button>
+            </form>
+
+            <div style={{ border: `1px solid ${RULE}`, overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr>
+                    {['Label','Type','Cap','Status','Linked RSVP','Link','Actions'].map(h => (
+                      <th key={h} style={thStyle}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {invites.map(inv => (
+                    <tr key={inv.id}>
+                      <td style={tdStyle}>{inv.label || '—'}</td>
+                      <td style={tdStyle}>{inv.event_type === 'full' ? 'Full day' : 'Ceremony / Evening'}</td>
+                      <td style={tdStyle}>{inv.max_party_size}</td>
+                      <td style={tdStyle}>{inv.status}</td>
+                      <td style={tdStyle}>
+                        {inv.rsvp_email
+                          ? `${inv.rsvp_email} (${inv.rsvp_attending ? 'Yes' : 'No'}, ${inv.rsvp_party_size} ppl)`
+                          : '—'}
+                      </td>
+                      <td style={tdStyle}>
+                        <button type="button" style={outlineButton} onClick={() => handleInviteCopy(inv)}>
+                          {copyOk === inv.id ? 'Copied!' : 'Copy'}
+                        </button>
+                      </td>
+                      <td style={{ ...tdStyle, width: 120 }}>
+                        {inv.status === 'open' && (
+                          <button type="button" style={outlineButton} onClick={() => setConfirmDeleteId(inv.id)}>Delete</button>
+                        )}
+                        {inv.status === 'consumed' && (
+                          <button type="button" style={outlineButton} onClick={() => setConfirmReleaseId(inv.id)}>Release</button>
+                        )}
+                        {inv.status === 'released' && (
+                          <span style={{
+                            fontFamily: LABEL_FONT, fontSize: 10, letterSpacing: '0.18em',
+                            textTransform: 'uppercase', color: LABEL,
+                          }}>Released</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {invites.length === 0 && (
+                <div style={{
+                  padding: '40px', textAlign: 'center',
+                  fontFamily: HEAD_FONT, fontSize: 18, fontStyle: 'italic', color: LABEL,
+                }}>No invites yet — create one above.</div>
+              )}
+            </div>
+          </>
+        )}
       </div>
 
       <ConfirmModal
@@ -620,6 +792,24 @@ export default function AdminDashboard() {
         destructive={true}
         onConfirm={() => performMenuDelete(pendingMenuDelete)}
         onCancel={() => setPendingMenuDelete(null)}
+      />
+      <ConfirmModal
+        open={confirmDeleteId != null}
+        title="Delete this invite?"
+        body="This unused invite link will be permanently deleted."
+        confirmLabel="Delete"
+        destructive={true}
+        onConfirm={() => handleInviteDelete(confirmDeleteId)}
+        onCancel={() => setConfirmDeleteId(null)}
+      />
+      <ConfirmModal
+        open={confirmReleaseId != null}
+        title="Release this invite?"
+        body="This will delete the household's RSVP (including any meal choices and registry claims). Continue?"
+        confirmLabel="Release"
+        destructive={true}
+        onConfirm={() => handleInviteRelease(confirmReleaseId)}
+        onCancel={() => setConfirmReleaseId(null)}
       />
     </div>
   );
