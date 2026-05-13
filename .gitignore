@@ -3,4 +3,4 @@ node_modules/
 rsvps.db
 dist/
 server.log
-media/
+/media/
