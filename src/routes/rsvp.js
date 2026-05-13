@@ -86,15 +86,25 @@ function createRsvpRouter(db) {
       return res.status(400).json({ error: 'email must be a valid email address' });
     }
 
+    const existing = db.getRsvpByEmail(trimmedEmail);
+
+    let effectiveEventType = event_type;
+    if (existing && attending) {
+      if (event_type && event_type !== existing.event_type) {
+        return res.status(400).json({ error: 'event_type_locked' });
+      }
+      effectiveEventType = existing.event_type;
+    }
+
     let dbEventType = null;
     let dbAttendees = [];
 
     if (attending) {
-      if (event_type !== 'full' && event_type !== 'ceremony_party') {
+      if (effectiveEventType !== 'full' && effectiveEventType !== 'ceremony_party') {
         return res.status(400).json({ error: "event_type must be 'full' or 'ceremony_party'" });
       }
-      dbEventType = event_type;
-      const v = validateAttendees(db, attendees, event_type);
+      dbEventType = effectiveEventType;
+      const v = validateAttendees(db, attendees, effectiveEventType);
       if (v.error) return res.status(400).json({ error: v.error });
       dbAttendees = v.cleaned;
       dbAttendees[0].name = trimmedName;

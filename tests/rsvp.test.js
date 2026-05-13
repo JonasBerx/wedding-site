@@ -398,7 +398,7 @@ describe('POST /api/rsvp upsert + deadline + release', () => {
     expect(res.body).not.toHaveProperty('released_gift');
   });
 
-  test('release: yes->yes (event_type change) does NOT release the claim', async () => {
+  test('release: yes->yes (same event_type) does NOT release the claim', async () => {
     db.insertRegistryItem({ title: 'Honeymoon fund' });
     const item = db.getAllRegistryItems()[0];
     const f = db.insertMenuItem({ course: 'first', name: 'Tomato' });
@@ -414,7 +414,11 @@ describe('POST /api/rsvp upsert + deadline + release', () => {
 
     const res = await request(app).post('/api/rsvp').send({
       name: 'Alice', email: 'alice@example.com', attending: true,
-      event_type: 'ceremony_party', attendees: [{ name: 'Alice' }],
+      event_type: 'full',
+      attendees: [
+        { name: 'Alice', first_course_id: f.lastInsertRowid, main_course_id: m.lastInsertRowid },
+        { name: 'Bob',   first_course_id: f.lastInsertRowid, main_course_id: m.lastInsertRowid },
+      ],
     });
     expect(res.status).toBe(201);
     expect(res.body).not.toHaveProperty('released_gift');
@@ -431,5 +435,64 @@ describe('POST /api/rsvp upsert + deadline + release', () => {
     });
     expect(res.body.was_update).toBe(true);
     expect(db.getAllRsvps()).toHaveLength(1);
+  });
+});
+
+describe('POST /api/rsvp event_type_locked on edits', () => {
+  let app, db;
+  beforeEach(() => { db = initDb(':memory:'); app = createApp(db); });
+  afterEach(() => { db.close(); });
+
+  test('edit posting a different event_type returns 400 event_type_locked', async () => {
+    // First submit (no token gate yet; legal under current code).
+    await request(app).post('/api/rsvp').send({
+      name: 'A', email: 'a@x.com', attending: true, event_type: 'ceremony_party',
+      attendees: [{ name: 'A' }],
+    });
+    const f = db.insertMenuItem({ course: 'first', name: 'Tomato' });
+    const m = db.insertMenuItem({ course: 'main',  name: 'Lamb' });
+    const res = await request(app).post('/api/rsvp').send({
+      name: 'A', email: 'a@x.com', attending: true, event_type: 'full',
+      attendees: [{ name: 'A', first_course_id: f.lastInsertRowid, main_course_id: m.lastInsertRowid }],
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('event_type_locked');
+  });
+
+  test('edit posting the same event_type still works', async () => {
+    await request(app).post('/api/rsvp').send({
+      name: 'A', email: 'a@x.com', attending: true, event_type: 'ceremony_party',
+      attendees: [{ name: 'A' }],
+    });
+    const res = await request(app).post('/api/rsvp').send({
+      name: 'A', email: 'a@x.com', attending: true, event_type: 'ceremony_party',
+      attendees: [{ name: 'A' }, { name: 'B' }],
+    });
+    expect(res.status).toBe(201);
+  });
+
+  test('edit with attending=false ignores event_type and succeeds', async () => {
+    await request(app).post('/api/rsvp').send({
+      name: 'A', email: 'a@x.com', attending: true, event_type: 'ceremony_party',
+      attendees: [{ name: 'A' }],
+    });
+    const res = await request(app).post('/api/rsvp').send({
+      name: 'A', email: 'a@x.com', attending: false,
+    });
+    expect(res.status).toBe(201);
+  });
+
+  test('edit omitting event_type still works and preserves the stored value', async () => {
+    await request(app).post('/api/rsvp').send({
+      name: 'A', email: 'a@x.com', attending: true, event_type: 'ceremony_party',
+      attendees: [{ name: 'A' }],
+    });
+    const res = await request(app).post('/api/rsvp').send({
+      name: 'A', email: 'a@x.com', attending: true,
+      // no event_type
+      attendees: [{ name: 'A' }],
+    });
+    expect(res.status).toBe(201);
+    expect(db.getRsvpByEmail('a@x.com').event_type).toBe('ceremony_party');
   });
 });
