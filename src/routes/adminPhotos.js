@@ -8,6 +8,40 @@ function createAdminPhotosRouter(db, opts = {}) {
   const mediaDir = opts.mediaDir || './media';
   const router = express.Router();
 
+  const QRCode = require('qrcode');
+
+  function qrTargetUrl() {
+    const base = process.env.PUBLIC_SITE_URL || 'http://localhost:5173';
+    const pw = process.env.GUEST_UPLOAD_PASSWORD || '';
+    return `${base}/photos?k=${encodeURIComponent(pw)}`;
+  }
+
+  router.get('/qr-target', requireAuth, (req, res) => {
+    res.json({ url: qrTargetUrl() });
+  });
+
+  router.get('/qr.svg', requireAuth, async (req, res) => {
+    try {
+      const svg = await QRCode.toString(qrTargetUrl(), { type: 'svg', errorCorrectionLevel: 'M', margin: 4 });
+      res.type('application/svg+xml').send(svg);
+    } catch (err) {
+      console.error('QR svg error:', err);
+      res.status(500).json({ error: 'qr_failed' });
+    }
+  });
+
+  router.get('/qr.png', requireAuth, async (req, res) => {
+    const requested = parseInt(req.query.size, 10);
+    const size = Math.min(Math.max(Number.isInteger(requested) ? requested : 1024, 128), 2048);
+    try {
+      const buf = await QRCode.toBuffer(qrTargetUrl(), { type: 'png', width: size, errorCorrectionLevel: 'M', margin: 4 });
+      res.type('image/png').send(buf);
+    } catch (err) {
+      console.error('QR png error:', err);
+      res.status(500).json({ error: 'qr_failed' });
+    }
+  });
+
   router.get('/', requireAuth, (req, res) => {
     const items = db.listAllGuestPhotos().map(toPublic);
     const stats = db.getGuestPhotoStats();
