@@ -108,7 +108,8 @@ function initDb(path = 'rsvps.db') {
       `).run({ name, email, attending, event_type, dietary_restrictions });
     },
 
-    upsertRsvp({ name, email, attending, event_type = null, dietary_restrictions = null, attendees = [] }) {
+    upsertRsvp({ name, email, attending, event_type = null, dietary_restrictions = null, attendees = [] }, opts = {}) {
+      const { consumeInviteId = null } = opts;
       const normEmail = String(email || '').trim().toLowerCase();
       db.exec('BEGIN IMMEDIATE');
       try {
@@ -152,8 +153,24 @@ function initDb(path = 'rsvps.db') {
           });
         }
 
+        let invite_consumed = false;
+        if (consumeInviteId != null) {
+          const result = db.prepare(`
+            UPDATE invite_tokens
+               SET status = 'consumed',
+                   rsvp_id = :rsvpId,
+                   consumed_at = strftime('%Y-%m-%dT%H:%M:%f','now')
+             WHERE id = :inviteId
+               AND status IN ('open','released')
+          `).run({ rsvpId: outcome.id, inviteId: consumeInviteId });
+          if (result.changes === 0) {
+            throw new Error('invite_already_used');
+          }
+          invite_consumed = true;
+        }
+
         db.exec('COMMIT');
-        return outcome;
+        return { ...outcome, invite_consumed };
       } catch (err) {
         db.exec('ROLLBACK');
         throw err;

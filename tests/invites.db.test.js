@@ -241,3 +241,50 @@ describe('releaseInviteToken', () => {
     expect(() => db.releaseInviteToken(999999)).toThrow(/invite_not_found/);
   });
 });
+
+describe('upsertRsvp + consumeInviteId atomicity', () => {
+  let db;
+  beforeEach(() => { db = initDb(':memory:'); });
+  afterEach(() => { db.close(); });
+
+  test('consumes the invite in the same transaction as the rsvp insert', () => {
+    const inv = db.createInviteToken({ event_type: 'ceremony_party', max_party_size: 2 });
+    const r = db.upsertRsvp({
+      name: 'A', email: 'a@x.com', attending: 1, event_type: 'ceremony_party',
+      attendees: [{ name: 'A' }],
+    }, { consumeInviteId: inv.id });
+
+    expect(r.invite_consumed).toBe(true);
+    const after = db.getInviteById(inv.id);
+    expect(after.status).toBe('consumed');
+    expect(after.rsvp_id).toBe(r.id);
+  });
+
+  test('omitting consumeInviteId leaves invite_consumed=false and does not touch any invite', () => {
+    const inv = db.createInviteToken({ event_type: 'ceremony_party', max_party_size: 2 });
+    const r = db.upsertRsvp({
+      name: 'A', email: 'a@x.com', attending: 1, event_type: 'ceremony_party',
+      attendees: [{ name: 'A' }],
+    });
+    expect(r.invite_consumed).toBe(false);
+    expect(db.getInviteById(inv.id).status).toBe('open');
+  });
+
+  test('second call against the same invite throws invite_already_used and does not insert the second rsvp', () => {
+    const inv = db.createInviteToken({ event_type: 'ceremony_party', max_party_size: 2 });
+    const r1 = db.upsertRsvp({
+      name: 'A', email: 'a@x.com', attending: 1, event_type: 'ceremony_party',
+      attendees: [{ name: 'A' }],
+    }, { consumeInviteId: inv.id });
+    expect(r1.invite_consumed).toBe(true);
+
+    expect(() =>
+      db.upsertRsvp({
+        name: 'B', email: 'b@x.com', attending: 1, event_type: 'ceremony_party',
+        attendees: [{ name: 'B' }],
+      }, { consumeInviteId: inv.id })
+    ).toThrow(/invite_already_used/);
+
+    expect(db.getRsvpByEmail('b@x.com')).toBeNull();
+  });
+});
