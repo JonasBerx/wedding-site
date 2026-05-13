@@ -355,6 +355,7 @@ function initDb(path = 'rsvps.db') {
     },
 
     getInviteByToken(token) {
+      if (!token || typeof token !== 'string') return null;
       return db.prepare('SELECT * FROM invite_tokens WHERE token = :token').get({ token }) || null;
     },
 

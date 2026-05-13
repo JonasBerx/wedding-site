@@ -82,6 +82,13 @@ describe('invite token helpers — create/read/consume/delete', () => {
     expect(db.getInviteByToken('does-not-exist')).toBeNull();
   });
 
+  test('getInviteByToken returns null for falsy/non-string input', () => {
+    expect(db.getInviteByToken('')).toBeNull();
+    expect(db.getInviteByToken(null)).toBeNull();
+    expect(db.getInviteByToken(undefined)).toBeNull();
+    expect(db.getInviteByToken(123)).toBeNull();
+  });
+
   test('getInviteById returns the row, or null for unknown id', () => {
     const created = db.createInviteToken({ event_type: 'full', max_party_size: 3 });
     const found = db.getInviteById(created.id);
