@@ -552,60 +552,83 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
 
       {/* Multi-attendee rows — visible whenever attending yes */}
       {form.attending === 'yes' && (
-        <>
-          {(menu === null) && form.eventType === 'full' && (
-            <div style={{ fontFamily: bodyFont, fontSize: 15, color: theme.inkSoft, fontStyle: 'italic' }}>
-              Loading menu…
-            </div>
-          )}
-          {menu && menu.length === 0 && form.eventType === 'full' && (
-            <div style={{ fontFamily: bodyFont, fontSize: 15, color: theme.accent }}>
-              Menu is being finalised — please come back shortly to choose your courses.
-            </div>
-          )}
-          <div style={{ borderTop: `1px solid ${theme.rule}`, paddingTop: 6 }}>
-            {attendees.map((a, i) => (
-              <AttendeeRow
-                key={i}
-                attendee={a}
-                index={i}
-                isLead={i === 0}
-                menu={menu || []}
-                eventType={form.eventType}
-                disabled={disabled}
-                theme={theme}
-                labelStyle={labelStyle}
-                inputStyle={inputStyle}
-                bodyFont={bodyFont}
-                labelFont={labelFont}
-                onChange={(idx, next) => {
-                  editedSinceLoad.current = true;
-                  setAttendees(prev => prev.map((row, j) => j === idx ? next : row));
-                  if (idx === 0) setForm(prev => ({ ...prev, names: next.name }));
-                }}
-                onRemove={(idx) => {
-                  editedSinceLoad.current = true;
-                  setAttendees(prev => prev.filter((_, j) => j !== idx));
-                }}
-              />
-            ))}
-            {attendees.length < 6 && (
-              <button type="button" disabled={disabled}
-                onClick={() => {
-                  editedSinceLoad.current = true;
-                  setAttendees(prev => [...prev, { name: '', firstCourseId: '', mainCourseId: '', dietary: '' }]);
-                }}
-                style={{
-                  marginTop: 12,
-                  background: 'transparent',
-                  border: `1px dashed ${theme.rule}`,
-                  color: theme.ink, cursor: disabled ? 'default' : 'pointer',
-                  fontFamily: labelFont, fontSize: 11, letterSpacing: '0.28em',
-                  textTransform: 'uppercase', padding: '10px 18px',
-                }}>+ Add another attendee</button>
-            )}
+        readOnly ? (
+          <div style={{
+            borderTop: `1px solid ${theme.rule}`,
+            paddingTop: 14,
+            display: 'flex', flexDirection: 'column', gap: 8,
+          }}>
+            {attendees.map((a, i) => {
+              const firstName = (menu || []).find(m => String(m.id) === String(a.firstCourseId))?.name;
+              const mainName  = (menu || []).find(m => String(m.id) === String(a.mainCourseId))?.name;
+              const parts = [a.name || `Attendee ${i + 1}`];
+              if (form.eventType === 'full') {
+                parts.push(`${stripHtml(firstName || '—')} / ${stripHtml(mainName || '—')}`);
+              }
+              if (a.dietary) parts.push(a.dietary);
+              return (
+                <div key={i} style={{ fontFamily: bodyFont, fontSize: 16, color: theme.ink }}>
+                  {parts.join(' — ')}
+                </div>
+              );
+            })}
           </div>
-        </>
+        ) : (
+          <>
+            {(menu === null) && form.eventType === 'full' && (
+              <div style={{ fontFamily: bodyFont, fontSize: 15, color: theme.inkSoft, fontStyle: 'italic' }}>
+                Loading menu…
+              </div>
+            )}
+            {menu && menu.length === 0 && form.eventType === 'full' && (
+              <div style={{ fontFamily: bodyFont, fontSize: 15, color: theme.accent }}>
+                Menu is being finalised — please come back shortly to choose your courses.
+              </div>
+            )}
+            <div style={{ borderTop: `1px solid ${theme.rule}`, paddingTop: 6 }}>
+              {attendees.map((a, i) => (
+                <AttendeeRow
+                  key={i}
+                  attendee={a}
+                  index={i}
+                  isLead={i === 0}
+                  menu={menu || []}
+                  eventType={form.eventType}
+                  disabled={disabled}
+                  theme={theme}
+                  labelStyle={labelStyle}
+                  inputStyle={inputStyle}
+                  bodyFont={bodyFont}
+                  labelFont={labelFont}
+                  onChange={(idx, next) => {
+                    editedSinceLoad.current = true;
+                    setAttendees(prev => prev.map((row, j) => j === idx ? next : row));
+                    if (idx === 0) setForm(prev => ({ ...prev, names: next.name }));
+                  }}
+                  onRemove={(idx) => {
+                    editedSinceLoad.current = true;
+                    setAttendees(prev => prev.filter((_, j) => j !== idx));
+                  }}
+                />
+              ))}
+              {attendees.length < 6 && (
+                <button type="button" disabled={disabled}
+                  onClick={() => {
+                    editedSinceLoad.current = true;
+                    setAttendees(prev => [...prev, { name: '', firstCourseId: '', mainCourseId: '', dietary: '' }]);
+                  }}
+                  style={{
+                    marginTop: 12,
+                    background: 'transparent',
+                    border: `1px dashed ${theme.rule}`,
+                    color: theme.ink, cursor: disabled ? 'default' : 'pointer',
+                    fontFamily: labelFont, fontSize: 11, letterSpacing: '0.28em',
+                    textTransform: 'uppercase', padding: '10px 18px',
+                  }}>+ Add another attendee</button>
+              )}
+            </div>
+          </>
+        )
       )}
 
       {/* Party-wide note */}
