@@ -343,6 +343,57 @@ function initDb(path = 'rsvps.db') {
       return [...firstRows, ...mainRows];
     },
 
+    // ── invite_tokens
+    createInviteToken({ event_type, max_party_size, label = null }) {
+      const token = _generateInviteToken();
+      const result = db.prepare(`
+        INSERT INTO invite_tokens (token, event_type, max_party_size, label)
+        VALUES (:token, :event_type, :max_party_size, :label)
+      `).run({ token, event_type, max_party_size, label });
+      return db.prepare('SELECT * FROM invite_tokens WHERE id = :id')
+        .get({ id: result.lastInsertRowid });
+    },
+
+    getInviteByToken(token) {
+      return db.prepare('SELECT * FROM invite_tokens WHERE token = :token').get({ token }) || null;
+    },
+
+    getInviteById(id) {
+      return db.prepare('SELECT * FROM invite_tokens WHERE id = :id').get({ id }) || null;
+    },
+
+    consumeInviteToken(inviteId, rsvpId) {
+      const result = db.prepare(`
+        UPDATE invite_tokens
+        SET status = 'consumed',
+            rsvp_id = :rsvpId,
+            consumed_at = strftime('%Y-%m-%dT%H:%M:%f','now')
+        WHERE id = :inviteId AND status IN ('open','released')
+      `).run({ inviteId, rsvpId });
+      return result.changes;
+    },
+
+    deleteInviteToken(inviteId) {
+      const result = db.prepare(
+        `DELETE FROM invite_tokens WHERE id = :inviteId AND status = 'open'`
+      ).run({ inviteId });
+      return result.changes;
+    },
+
+    getAllInvitesWithRsvp() {
+      return db.prepare(`
+        SELECT
+          it.*,
+          r.email      AS rsvp_email,
+          r.name       AS rsvp_lead_name,
+          r.attending  AS rsvp_attending,
+          COALESCE((SELECT COUNT(*) FROM rsvp_attendees a WHERE a.rsvp_id = r.id), 0) AS rsvp_party_size
+        FROM invite_tokens it
+        LEFT JOIN rsvps r ON r.id = it.rsvp_id
+        ORDER BY it.created_at DESC, it.id DESC
+      `).all();
+    },
+
     // Test-only helper. PRAGMA does not accept bound parameters in SQLite,
     // so we allowlist a simple-identifier shape instead.
     _tableInfo(name) {

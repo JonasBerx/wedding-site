@@ -44,3 +44,111 @@ describe('_generateInviteToken', () => {
     expect(set.size).toBe(50);
   });
 });
+
+describe('invite token helpers — create/read/consume/delete', () => {
+  let db;
+  beforeEach(() => { db = initDb(':memory:'); });
+  afterEach(()  => { db.close(); });
+
+  test('createInviteToken inserts an open token with random unique token and correct fields', () => {
+    const row1 = db.createInviteToken({ event_type: 'full', max_party_size: 2, label: 'Alice + Bob' });
+    const row2 = db.createInviteToken({ event_type: 'ceremony_party', max_party_size: 4 });
+    expect(row1.id).toBeGreaterThan(0);
+    expect(typeof row1.token).toBe('string');
+    expect(row1.token).toMatch(/^[A-Za-z0-9_-]{22}$/);
+    expect(row1.event_type).toBe('full');
+    expect(row1.max_party_size).toBe(2);
+    expect(row1.label).toBe('Alice + Bob');
+    expect(row1.status).toBe('open');
+    expect(row1.rsvp_id).toBeNull();
+    expect(row1.consumed_at).toBeNull();
+    expect(row2.label).toBeNull();
+    expect(row2.token).not.toBe(row1.token);
+  });
+
+  test('createInviteToken rejects max_party_size of 0', () => {
+    expect(() => db.createInviteToken({ event_type: 'full', max_party_size: 0 })).toThrow();
+  });
+
+  test('createInviteToken rejects max_party_size of 7', () => {
+    expect(() => db.createInviteToken({ event_type: 'full', max_party_size: 7 })).toThrow();
+  });
+
+  test('getInviteByToken returns the row, or null for unknown token', () => {
+    const created = db.createInviteToken({ event_type: 'full', max_party_size: 3 });
+    const found = db.getInviteByToken(created.token);
+    expect(found).not.toBeNull();
+    expect(found.id).toBe(created.id);
+    expect(db.getInviteByToken('does-not-exist')).toBeNull();
+  });
+
+  test('getInviteById returns the row, or null for unknown id', () => {
+    const created = db.createInviteToken({ event_type: 'full', max_party_size: 3 });
+    const found = db.getInviteById(created.id);
+    expect(found).not.toBeNull();
+    expect(found.token).toBe(created.token);
+    expect(db.getInviteById(999999)).toBeNull();
+  });
+
+  test('consumeInviteToken flips open → consumed and records rsvp_id and consumed_at', () => {
+    const invite = db.createInviteToken({ event_type: 'full', max_party_size: 2 });
+    const rsvp = db.upsertRsvp({
+      name: 'Alice', email: 'alice@example.com', attending: 1, event_type: 'full',
+      attendees: [{ name: 'Alice' }, { name: 'Bob' }],
+    });
+    const changes = db.consumeInviteToken(invite.id, rsvp.id);
+    expect(changes).toBe(1);
+    const after = db.getInviteById(invite.id);
+    expect(after.status).toBe('consumed');
+    expect(after.rsvp_id).toBe(rsvp.id);
+    expect(after.consumed_at).not.toBeNull();
+  });
+
+  test('consumeInviteToken returns 0 when already consumed', () => {
+    const invite = db.createInviteToken({ event_type: 'full', max_party_size: 2 });
+    const rsvp = db.upsertRsvp({
+      name: 'Alice', email: 'alice@example.com', attending: 1, event_type: 'full',
+      attendees: [{ name: 'Alice' }],
+    });
+    expect(db.consumeInviteToken(invite.id, rsvp.id)).toBe(1);
+    expect(db.consumeInviteToken(invite.id, rsvp.id)).toBe(0);
+  });
+
+  test('deleteInviteToken removes open tokens and refuses consumed ones', () => {
+    const openInv = db.createInviteToken({ event_type: 'full', max_party_size: 2 });
+    expect(db.deleteInviteToken(openInv.id)).toBe(1);
+    expect(db.getInviteById(openInv.id)).toBeNull();
+
+    const consumedInv = db.createInviteToken({ event_type: 'full', max_party_size: 2 });
+    const rsvp = db.upsertRsvp({
+      name: 'C', email: 'c@example.com', attending: 1, event_type: 'full',
+      attendees: [{ name: 'C' }],
+    });
+    db.consumeInviteToken(consumedInv.id, rsvp.id);
+    expect(db.deleteInviteToken(consumedInv.id)).toBe(0);
+    expect(db.getInviteById(consumedInv.id)).not.toBeNull();
+  });
+
+  test('getAllInvitesWithRsvp joins rsvp data with attendee count', () => {
+    const openInv = db.createInviteToken({ event_type: 'ceremony_party', max_party_size: 3, label: 'open one' });
+    const consumedInv = db.createInviteToken({ event_type: 'full', max_party_size: 4, label: 'consumed one' });
+    const rsvp = db.upsertRsvp({
+      name: 'Dana', email: 'dana@example.com', attending: 1, event_type: 'full',
+      attendees: [{ name: 'Dana' }, { name: 'Eli' }],
+    });
+    db.consumeInviteToken(consumedInv.id, rsvp.id);
+
+    const rows = db.getAllInvitesWithRsvp();
+    expect(rows.length).toBe(2);
+    const openRow = rows.find(r => r.id === openInv.id);
+    const consRow = rows.find(r => r.id === consumedInv.id);
+
+    expect(openRow.rsvp_email).toBeNull();
+    expect(openRow.rsvp_party_size).toBe(0);
+
+    expect(consRow.rsvp_email).toBe('dana@example.com');
+    expect(consRow.rsvp_lead_name).toBe('Dana');
+    expect(consRow.rsvp_attending).toBe(1);
+    expect(consRow.rsvp_party_size).toBe(2);
+  });
+});
