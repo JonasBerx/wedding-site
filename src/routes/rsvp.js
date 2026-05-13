@@ -75,7 +75,7 @@ function createRsvpRouter(db) {
   router.post('/', (req, res) => {
     if (deadlinePassed()) return res.status(409).json({ error: 'deadline_passed' });
 
-    const { name, email, attending, event_type, dietary_restrictions, attendees } = req.body;
+    const { name, email, attending, event_type, token, dietary_restrictions, attendees } = req.body;
     const trimmedName  = typeof name  === 'string' ? name.trim()  : '';
     const trimmedEmail = typeof email === 'string' ? email.trim() : '';
 
@@ -89,11 +89,23 @@ function createRsvpRouter(db) {
     const existing = db.getRsvpByEmail(trimmedEmail);
 
     let effectiveEventType = event_type;
+    let consumeInviteId = null;
+    let inviteCap = null;
     if (existing && attending) {
       if (event_type && event_type !== existing.event_type) {
         return res.status(400).json({ error: 'event_type_locked' });
       }
       effectiveEventType = existing.event_type;
+    } else if (!existing && attending) {
+      if (typeof token !== 'string' || !token.trim()) {
+        return res.status(400).json({ error: 'invite_required' });
+      }
+      const inv = db.getInviteByToken(token.trim());
+      if (!inv) return res.status(400).json({ error: 'invalid_invite' });
+      if (inv.status === 'consumed') return res.status(409).json({ error: 'invite_already_used' });
+      effectiveEventType = inv.event_type;
+      consumeInviteId = inv.id;
+      inviteCap = inv.max_party_size;
     }
 
     let dbEventType = null;
@@ -104,6 +116,9 @@ function createRsvpRouter(db) {
         return res.status(400).json({ error: "event_type must be 'full' or 'ceremony_party'" });
       }
       dbEventType = effectiveEventType;
+      if (inviteCap != null && Array.isArray(attendees) && attendees.length > inviteCap) {
+        return res.status(400).json({ error: 'too_many_attendees' });
+      }
       const v = validateAttendees(db, attendees, effectiveEventType);
       if (v.error) return res.status(400).json({ error: v.error });
       dbAttendees = v.cleaned;
@@ -120,8 +135,11 @@ function createRsvpRouter(db) {
         dietary_restrictions: typeof dietary_restrictions === 'string' && dietary_restrictions.trim()
           ? dietary_restrictions.trim() : null,
         attendees: dbAttendees,
-      });
+      }, consumeInviteId ? { consumeInviteId } : {});
     } catch (err) {
+      if (err && err.message === 'invite_already_used') {
+        return res.status(409).json({ error: 'invite_already_used' });
+      }
       console.error('RSVP upsert failed:', err);
       return res.status(500).json({ error: 'Failed to save RSVP' });
     }

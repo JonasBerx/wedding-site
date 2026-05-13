@@ -19,9 +19,10 @@ describe('POST /api/rsvp', () => {
   test('returns 201 with first/main course ids for full-day guests', async () => {
     const f = db.insertMenuItem({ course: 'first', name: 'Tomato' });
     const m = db.insertMenuItem({ course: 'main',  name: 'Lamb' });
+    const inv = db.createInviteToken({ event_type: 'full', max_party_size: 4 });
     const res = await request(app).post('/api/rsvp').send({
       name: 'Alice', email: 'alice@example.com', attending: true,
-      event_type: 'full',
+      event_type: 'full', token: inv.token,
       attendees: [
         { name: 'Alice', first_course_id: f.lastInsertRowid, main_course_id: m.lastInsertRowid },
       ],
@@ -30,8 +31,9 @@ describe('POST /api/rsvp', () => {
   });
 
   test('full-day rejects when first_course_id missing', async () => {
+    const inv = db.createInviteToken({ event_type: 'full', max_party_size: 4 });
     const res = await request(app).post('/api/rsvp').send({
-      name: 'A', email: 'a@x.com', attending: true, event_type: 'full',
+      name: 'A', email: 'a@x.com', attending: true, event_type: 'full', token: inv.token,
       attendees: [{ name: 'A', main_course_id: 1 }],
     });
     expect(res.status).toBe(400);
@@ -40,16 +42,18 @@ describe('POST /api/rsvp', () => {
   test('full-day rejects when course id refers to wrong course', async () => {
     const f = db.insertMenuItem({ course: 'first', name: 'Tomato' });
     const m = db.insertMenuItem({ course: 'main',  name: 'Lamb' });
+    const inv = db.createInviteToken({ event_type: 'full', max_party_size: 4 });
     const res = await request(app).post('/api/rsvp').send({
-      name: 'A', email: 'a@x.com', attending: true, event_type: 'full',
+      name: 'A', email: 'a@x.com', attending: true, event_type: 'full', token: inv.token,
       attendees: [{ name: 'A', first_course_id: m.lastInsertRowid, main_course_id: f.lastInsertRowid }],
     });
     expect(res.status).toBe(400);
   });
 
   test('full-day rejects when course id does not exist', async () => {
+    const inv = db.createInviteToken({ event_type: 'full', max_party_size: 4 });
     const res = await request(app).post('/api/rsvp').send({
-      name: 'A', email: 'a@x.com', attending: true, event_type: 'full',
+      name: 'A', email: 'a@x.com', attending: true, event_type: 'full', token: inv.token,
       attendees: [{ name: 'A', first_course_id: 999, main_course_id: 1000 }],
     });
     expect(res.status).toBe(400);
@@ -57,8 +61,9 @@ describe('POST /api/rsvp', () => {
   });
 
   test('ceremony_party stores null for both course ids', async () => {
+    const inv = db.createInviteToken({ event_type: 'ceremony_party', max_party_size: 4 });
     const res = await request(app).post('/api/rsvp').send({
-      name: 'B', email: 'b@x.com', attending: true, event_type: 'ceremony_party',
+      name: 'B', email: 'b@x.com', attending: true, event_type: 'ceremony_party', token: inv.token,
       attendees: [{ name: 'B', first_course_id: 1, main_course_id: 1 }],
     });
     expect(res.status).toBe(201);
@@ -88,7 +93,8 @@ describe('POST /api/rsvp', () => {
   });
 
   test('stores attending as 1 for true, 0 for false', async () => {
-    await request(app).post('/api/rsvp').send({ name: 'A', email: 'a@b.com', attending: true, event_type: 'ceremony_party', attendees: [{ name: 'A' }] });
+    const inv = db.createInviteToken({ event_type: 'ceremony_party', max_party_size: 4 });
+    await request(app).post('/api/rsvp').send({ name: 'A', email: 'a@b.com', attending: true, event_type: 'ceremony_party', token: inv.token, attendees: [{ name: 'A' }] });
     await request(app).post('/api/rsvp').send({ name: 'B', email: 'b@b.com', attending: false });
     const [b, a] = db.getAllRsvps();
     expect(a.attending).toBe(1);
@@ -96,11 +102,13 @@ describe('POST /api/rsvp', () => {
   });
 
   test('trims whitespace from name and email', async () => {
+    const inv = db.createInviteToken({ event_type: 'ceremony_party', max_party_size: 4 });
     const res = await request(app).post('/api/rsvp').send({
       name: '  Alice  ',
       email: '  alice@example.com  ',
       attending: true,
       event_type: 'ceremony_party',
+      token: inv.token,
       attendees: [{ name: 'Alice' }],
     });
     expect(res.status).toBe(201);
@@ -183,8 +191,9 @@ describe('POST /api/rsvp', () => {
   });
 
   test('full-day requires at least one attendee', async () => {
+    const inv = db.createInviteToken({ event_type: 'full', max_party_size: 4 });
     const res = await request(app).post('/api/rsvp').send({
-      name: 'A', email: 'a@x.com', attending: true, event_type: 'full',
+      name: 'A', email: 'a@x.com', attending: true, event_type: 'full', token: inv.token,
       attendees: [],
     });
     expect(res.status).toBe(400);
@@ -194,11 +203,12 @@ describe('POST /api/rsvp', () => {
   test('caps attendees at 6', async () => {
     const f = db.insertMenuItem({ course: 'first', name: 'X' });
     const m = db.insertMenuItem({ course: 'main',  name: 'Y' });
+    const inv = db.createInviteToken({ event_type: 'full', max_party_size: 6 });
     const seven = Array.from({ length: 7 }, (_, i) => ({
       name: `P${i+1}`, first_course_id: f.lastInsertRowid, main_course_id: m.lastInsertRowid,
     }));
     const res = await request(app).post('/api/rsvp').send({
-      name: 'P1', email: 'a@x.com', attending: true, event_type: 'full',
+      name: 'P1', email: 'a@x.com', attending: true, event_type: 'full', token: inv.token,
       attendees: seven,
     });
     expect(res.status).toBe(400);
@@ -208,8 +218,9 @@ describe('POST /api/rsvp', () => {
   test('lead attendee name is forced to top-level name', async () => {
     const f = db.insertMenuItem({ course: 'first', name: 'X' });
     const m = db.insertMenuItem({ course: 'main',  name: 'Y' });
+    const inv = db.createInviteToken({ event_type: 'full', max_party_size: 4 });
     const res = await request(app).post('/api/rsvp').send({
-      name: 'Top Name', email: 'a@x.com', attending: true, event_type: 'full',
+      name: 'Top Name', email: 'a@x.com', attending: true, event_type: 'full', token: inv.token,
       attendees: [
         { name: 'WRONG', first_course_id: f.lastInsertRowid, main_course_id: m.lastInsertRowid },
       ],
@@ -330,9 +341,10 @@ describe('POST /api/rsvp upsert + deadline + release', () => {
   });
 
   test('first POST inserts and returns was_update:false', async () => {
+    const inv = db.createInviteToken({ event_type: 'ceremony_party', max_party_size: 4 });
     const res = await request(app).post('/api/rsvp').send({
       name: 'Alice', email: 'alice@example.com', attending: true,
-      event_type: 'ceremony_party', attendees: [{ name: 'Alice' }],
+      event_type: 'ceremony_party', token: inv.token, attendees: [{ name: 'Alice' }],
     });
     expect(res.status).toBe(201);
     expect(res.body.was_update).toBe(false);
@@ -340,9 +352,10 @@ describe('POST /api/rsvp upsert + deadline + release', () => {
   });
 
   test('second POST with same email updates and returns was_update:true', async () => {
+    const inv = db.createInviteToken({ event_type: 'ceremony_party', max_party_size: 4 });
     await request(app).post('/api/rsvp').send({
       name: 'Alice', email: 'alice@example.com', attending: true,
-      event_type: 'ceremony_party', attendees: [{ name: 'Alice' }],
+      event_type: 'ceremony_party', token: inv.token, attendees: [{ name: 'Alice' }],
     });
     const res = await request(app).post('/api/rsvp').send({
       name: 'Alice C', email: 'alice@example.com', attending: false,
@@ -369,9 +382,10 @@ describe('POST /api/rsvp upsert + deadline + release', () => {
     db.insertRegistryItem({ title: 'Honeymoon fund' });
     const item = db.getAllRegistryItems()[0];
 
+    const inv = db.createInviteToken({ event_type: 'ceremony_party', max_party_size: 4 });
     await request(app).post('/api/rsvp').send({
       name: 'Alice', email: 'alice@example.com', attending: true,
-      event_type: 'ceremony_party', attendees: [{ name: 'Alice' }],
+      event_type: 'ceremony_party', token: inv.token, attendees: [{ name: 'Alice' }],
     });
     const rsvp = db.getRsvpByEmail('alice@example.com');
     db.claimRegistryItem(item.id, rsvp.id);
@@ -387,9 +401,10 @@ describe('POST /api/rsvp upsert + deadline + release', () => {
   });
 
   test('release: yes->no with no claim does not include released_gift', async () => {
+    const inv = db.createInviteToken({ event_type: 'ceremony_party', max_party_size: 4 });
     await request(app).post('/api/rsvp').send({
       name: 'Alice', email: 'alice@example.com', attending: true,
-      event_type: 'ceremony_party', attendees: [{ name: 'Alice' }],
+      event_type: 'ceremony_party', token: inv.token, attendees: [{ name: 'Alice' }],
     });
     const res = await request(app).post('/api/rsvp').send({
       name: 'Alice', email: 'alice@example.com', attending: false,
@@ -403,10 +418,11 @@ describe('POST /api/rsvp upsert + deadline + release', () => {
     const item = db.getAllRegistryItems()[0];
     const f = db.insertMenuItem({ course: 'first', name: 'Tomato' });
     const m = db.insertMenuItem({ course: 'main',  name: 'Lamb' });
+    const inv = db.createInviteToken({ event_type: 'full', max_party_size: 4 });
 
     await request(app).post('/api/rsvp').send({
       name: 'Alice', email: 'alice@example.com', attending: true,
-      event_type: 'full',
+      event_type: 'full', token: inv.token,
       attendees: [{ name: 'Alice', first_course_id: f.lastInsertRowid, main_course_id: m.lastInsertRowid }],
     });
     const rsvp = db.getRsvpByEmail('alice@example.com');
@@ -426,9 +442,10 @@ describe('POST /api/rsvp upsert + deadline + release', () => {
   });
 
   test('case-insensitive email upsert (Alice@... and alice@... become one row)', async () => {
+    const inv = db.createInviteToken({ event_type: 'ceremony_party', max_party_size: 4 });
     await request(app).post('/api/rsvp').send({
       name: 'Alice', email: 'Alice@Example.COM', attending: true,
-      event_type: 'ceremony_party', attendees: [{ name: 'Alice' }],
+      event_type: 'ceremony_party', token: inv.token, attendees: [{ name: 'Alice' }],
     });
     const res = await request(app).post('/api/rsvp').send({
       name: 'Alice C', email: 'alice@example.com', attending: false,
@@ -444,9 +461,9 @@ describe('POST /api/rsvp event_type_locked on edits', () => {
   afterEach(() => { db.close(); });
 
   test('edit posting a different event_type returns 400 event_type_locked', async () => {
-    // First submit (no token gate yet; legal under current code).
+    const inv = db.createInviteToken({ event_type: 'ceremony_party', max_party_size: 4 });
     await request(app).post('/api/rsvp').send({
-      name: 'A', email: 'a@x.com', attending: true, event_type: 'ceremony_party',
+      name: 'A', email: 'a@x.com', attending: true, event_type: 'ceremony_party', token: inv.token,
       attendees: [{ name: 'A' }],
     });
     const f = db.insertMenuItem({ course: 'first', name: 'Tomato' });
@@ -460,8 +477,9 @@ describe('POST /api/rsvp event_type_locked on edits', () => {
   });
 
   test('edit posting the same event_type still works', async () => {
+    const inv = db.createInviteToken({ event_type: 'ceremony_party', max_party_size: 4 });
     await request(app).post('/api/rsvp').send({
-      name: 'A', email: 'a@x.com', attending: true, event_type: 'ceremony_party',
+      name: 'A', email: 'a@x.com', attending: true, event_type: 'ceremony_party', token: inv.token,
       attendees: [{ name: 'A' }],
     });
     const res = await request(app).post('/api/rsvp').send({
@@ -472,8 +490,9 @@ describe('POST /api/rsvp event_type_locked on edits', () => {
   });
 
   test('edit with attending=false ignores event_type and succeeds', async () => {
+    const inv = db.createInviteToken({ event_type: 'ceremony_party', max_party_size: 4 });
     await request(app).post('/api/rsvp').send({
-      name: 'A', email: 'a@x.com', attending: true, event_type: 'ceremony_party',
+      name: 'A', email: 'a@x.com', attending: true, event_type: 'ceremony_party', token: inv.token,
       attendees: [{ name: 'A' }],
     });
     const res = await request(app).post('/api/rsvp').send({
@@ -483,8 +502,9 @@ describe('POST /api/rsvp event_type_locked on edits', () => {
   });
 
   test('edit omitting event_type still works and preserves the stored value', async () => {
+    const inv = db.createInviteToken({ event_type: 'ceremony_party', max_party_size: 4 });
     await request(app).post('/api/rsvp').send({
-      name: 'A', email: 'a@x.com', attending: true, event_type: 'ceremony_party',
+      name: 'A', email: 'a@x.com', attending: true, event_type: 'ceremony_party', token: inv.token,
       attendees: [{ name: 'A' }],
     });
     const res = await request(app).post('/api/rsvp').send({
@@ -494,5 +514,148 @@ describe('POST /api/rsvp event_type_locked on edits', () => {
     });
     expect(res.status).toBe(201);
     expect(db.getRsvpByEmail('a@x.com').event_type).toBe('ceremony_party');
+  });
+});
+
+describe('POST /api/rsvp invite-token gating', () => {
+  let app, db;
+  beforeEach(() => {
+    delete process.env.RSVP_DEADLINE;
+    db = initDb(':memory:');
+    app = createApp(db);
+  });
+  afterEach(() => {
+    db.close();
+    delete process.env.RSVP_DEADLINE;
+  });
+
+  test('first submit attending=true without a token → 400 invite_required', async () => {
+    const res = await request(app).post('/api/rsvp').send({
+      name: 'A', email: 'a@x.com', attending: true, event_type: 'ceremony_party',
+      attendees: [{ name: 'A' }],
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('invite_required');
+    expect(db.getRsvpByEmail('a@x.com')).toBeNull();
+  });
+
+  test('first submit with unknown token → 400 invalid_invite', async () => {
+    const res = await request(app).post('/api/rsvp').send({
+      name: 'A', email: 'a@x.com', attending: true, event_type: 'ceremony_party',
+      token: 'does-not-exist',
+      attendees: [{ name: 'A' }],
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('invalid_invite');
+    expect(db.getRsvpByEmail('a@x.com')).toBeNull();
+  });
+
+  test('first submit consumes the token; second use with same token → 409 invite_already_used', async () => {
+    const inv = db.createInviteToken({ event_type: 'ceremony_party', max_party_size: 4 });
+    const first = await request(app).post('/api/rsvp').send({
+      name: 'A', email: 'a@x.com', attending: true, event_type: 'ceremony_party',
+      token: inv.token, attendees: [{ name: 'A' }],
+    });
+    expect(first.status).toBe(201);
+    expect(db.getInviteById(inv.id).status).toBe('consumed');
+
+    const second = await request(app).post('/api/rsvp').send({
+      name: 'B', email: 'b@x.com', attending: true, event_type: 'ceremony_party',
+      token: inv.token, attendees: [{ name: 'B' }],
+    });
+    expect(second.status).toBe(409);
+    expect(second.body.error).toBe('invite_already_used');
+    expect(db.getRsvpByEmail('b@x.com')).toBeNull();
+  });
+
+  test("first submit uses the token's event_type; client-sent event_type is ignored", async () => {
+    const inv = db.createInviteToken({ event_type: 'ceremony_party', max_party_size: 4 });
+    const f = db.insertMenuItem({ course: 'first', name: 'Tomato' });
+    const m = db.insertMenuItem({ course: 'main',  name: 'Lamb' });
+    const res = await request(app).post('/api/rsvp').send({
+      name: 'A', email: 'a@x.com', attending: true,
+      event_type: 'full', // client lies; should be ignored
+      token: inv.token,
+      attendees: [{ name: 'A', first_course_id: f.lastInsertRowid, main_course_id: m.lastInsertRowid }],
+    });
+    expect(res.status).toBe(201);
+    const stored = db.getRsvpByEmail('a@x.com');
+    expect(stored.event_type).toBe('ceremony_party');
+    // Course ids dropped because token said ceremony_party.
+    expect(stored.attendees[0].first_course_id).toBeNull();
+    expect(stored.attendees[0].main_course_id).toBeNull();
+  });
+
+  test('first submit with attendees.length > token.max_party_size → 400 too_many_attendees', async () => {
+    const inv = db.createInviteToken({ event_type: 'ceremony_party', max_party_size: 2 });
+    const res = await request(app).post('/api/rsvp').send({
+      name: 'A', email: 'a@x.com', attending: true, event_type: 'ceremony_party',
+      token: inv.token,
+      attendees: [{ name: 'A' }, { name: 'B' }, { name: 'C' }],
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('too_many_attendees');
+    expect(db.getRsvpByEmail('a@x.com')).toBeNull();
+  });
+
+  test('edit path ignores token entirely', async () => {
+    const inv = db.createInviteToken({ event_type: 'ceremony_party', max_party_size: 4 });
+    await request(app).post('/api/rsvp').send({
+      name: 'A', email: 'a@x.com', attending: true, event_type: 'ceremony_party',
+      token: inv.token, attendees: [{ name: 'A' }],
+    });
+
+    // Edit with a junk token: still works.
+    const edit1 = await request(app).post('/api/rsvp').send({
+      name: 'A', email: 'a@x.com', attending: true, event_type: 'ceremony_party',
+      token: 'whatever-bogus', attendees: [{ name: 'A' }, { name: 'B' }],
+    });
+    expect(edit1.status).toBe(201);
+
+    // Edit with no token: still works.
+    const edit2 = await request(app).post('/api/rsvp').send({
+      name: 'A', email: 'a@x.com', attending: true, event_type: 'ceremony_party',
+      attendees: [{ name: 'A' }],
+    });
+    expect(edit2.status).toBe(201);
+  });
+
+  test('released invite is reusable: release then fresh first-submit succeeds', async () => {
+    const inv = db.createInviteToken({ event_type: 'ceremony_party', max_party_size: 4 });
+    const first = await request(app).post('/api/rsvp').send({
+      name: 'A', email: 'a@x.com', attending: true, event_type: 'ceremony_party',
+      token: inv.token, attendees: [{ name: 'A' }],
+    });
+    expect(first.status).toBe(201);
+    expect(db.getInviteById(inv.id).status).toBe('consumed');
+
+    db.releaseInviteToken(inv.id);
+    expect(db.getInviteById(inv.id).status).toBe('released');
+
+    const reuse = await request(app).post('/api/rsvp').send({
+      name: 'B', email: 'b@x.com', attending: true, event_type: 'ceremony_party',
+      token: inv.token, attendees: [{ name: 'B' }],
+    });
+    expect(reuse.status).toBe(201);
+    expect(db.getInviteById(inv.id).status).toBe('consumed');
+  });
+
+  test('first submit attending=false succeeds without a token', async () => {
+    const res = await request(app).post('/api/rsvp').send({
+      name: 'A', email: 'a@x.com', attending: false,
+    });
+    expect(res.status).toBe(201);
+    const stored = db.getRsvpByEmail('a@x.com');
+    expect(stored.attending).toBe(0);
+  });
+
+  test('deadline_passed preempts invite_required', async () => {
+    process.env.RSVP_DEADLINE = '2000-01-01T00:00:00Z';
+    const res = await request(app).post('/api/rsvp').send({
+      name: 'A', email: 'a@x.com', attending: true, event_type: 'ceremony_party',
+      attendees: [{ name: 'A' }],
+    });
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe('deadline_passed');
   });
 });
