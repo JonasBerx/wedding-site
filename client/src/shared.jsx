@@ -127,6 +127,87 @@ function stripHtml(s) {
 }
 
 // ─────────────────────────────────────────────────────────────
+// AttendeeRow — one row per attendee inside RSVPForm.
+// Lead row (index 0) shows no Name input (handled by top-level Names field).
+// Non-lead rows show a Name input and a remove button.
+// Course selects only appear for full-day event type.
+// ─────────────────────────────────────────────────────────────
+function AttendeeRow({
+  attendee, index, isLead, menu, eventType, disabled,
+  theme, labelStyle, inputStyle, bodyFont, labelFont,
+  onChange, onRemove,
+}) {
+  const setField = (key, value) => onChange(index, { ...attendee, [key]: value });
+  const courseSelect = (course) => {
+    const list = menu.filter(i => i.course === course);
+    const key = course === 'first' ? 'firstCourseId' : 'mainCourseId';
+    const heading = course === 'first' ? 'First course' : 'Main course';
+    return (
+      <div key={course}>
+        <span style={labelStyle}>{heading}</span>
+        <select
+          required
+          value={attendee[key]}
+          disabled={disabled}
+          onChange={(e) => setField(key, e.target.value)}
+          style={{ ...inputStyle, padding: '10px 0 10px', appearance: 'auto' }}
+        >
+          <option value="" disabled>— pick one —</option>
+          {list.map(item => (
+            <option key={item.id} value={item.id}>
+              {stripHtml(item.name)}{item.note ? ` — ${item.note}` : ''}{item.is_vegan ? ' (vegan)' : ''}
+            </option>
+          ))}
+        </select>
+      </div>
+    );
+  };
+  return (
+    <div style={{
+      padding: '14px 0',
+      borderTop: index === 0 ? 'none' : `1px dashed ${theme.rule}`,
+      display: 'flex', flexDirection: 'column', gap: 14,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span style={{
+          fontFamily: labelFont, fontSize: 11, color: theme.label,
+          letterSpacing: '0.28em', textTransform: 'uppercase',
+        }}>
+          {isLead ? 'Attendee 1 (you)' : `Attendee ${index + 1}`}
+        </span>
+        {!isLead && (
+          <button type="button" onClick={() => onRemove(index)} disabled={disabled}
+            style={{
+              background: 'transparent', border: 'none',
+              cursor: disabled ? 'default' : 'pointer',
+              color: theme.label, fontSize: 13, padding: 0,
+            }}>× remove</button>
+        )}
+      </div>
+      {!isLead && (
+        <div>
+          <span style={labelStyle}>Name</span>
+          <input style={inputStyle} disabled={disabled} value={attendee.name}
+            onChange={(e) => setField('name', e.target.value)} placeholder="Their name" />
+        </div>
+      )}
+      {eventType === 'full' && menu && menu.length > 0 && (
+        <>
+          {courseSelect('first')}
+          {courseSelect('main')}
+        </>
+      )}
+      <div>
+        <span style={labelStyle}>Dietary notes (optional)</span>
+        <input style={inputStyle} disabled={disabled} value={attendee.dietary}
+          onChange={(e) => setField('dietary', e.target.value)}
+          placeholder="allergies, etc." />
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
 // RSVPForm — controlled local state, 'thank-you' state on submit.
 // Renders inputs styled by the variation's `theme` prop (accent, ink, rule).
 // ─────────────────────────────────────────────────────────────
@@ -469,51 +550,61 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
         </div>
       )}
 
-      {/* Course dropdowns — full-day guests only */}
-      {form.attending === 'yes' && form.eventType === 'full' && (
+      {/* Multi-attendee rows — visible whenever attending yes */}
+      {form.attending === 'yes' && (
         <>
-          {(menu === null) && (
+          {(menu === null) && form.eventType === 'full' && (
             <div style={{ fontFamily: bodyFont, fontSize: 15, color: theme.inkSoft, fontStyle: 'italic' }}>
               Loading menu…
             </div>
           )}
-          {menu && menu.length === 0 && (
+          {menu && menu.length === 0 && form.eventType === 'full' && (
             <div style={{ fontFamily: bodyFont, fontSize: 15, color: theme.accent }}>
               Menu is being finalised — please come back shortly to choose your courses.
             </div>
           )}
-          {menu && menu.length > 0 && ['first', 'main'].map(course => {
-            const list = menu.filter(i => i.course === course);
-            const stateKey = course === 'first' ? 'firstCourseId' : 'mainCourseId';
-            const heading  = course === 'first' ? 'First course' : 'Main course';
-            const value = attendees[0]?.[stateKey] ?? '';
-            return (
-              <div key={course}>
-                <span style={labelStyle}>{heading}</span>
-                <select
-                  required
-                  value={value}
-                  disabled={disabled}
-                  onChange={(e) => {
-                    editedSinceLoad.current = true;
-                    setAttendees(prev => {
-                      const copy = prev.slice();
-                      copy[0] = { ...copy[0], [stateKey]: e.target.value };
-                      return copy;
-                    });
-                  }}
-                  style={{ ...inputStyle, padding: '10px 0 10px', appearance: 'auto' }}
-                >
-                  <option value="" disabled>— pick one —</option>
-                  {list.map(item => (
-                    <option key={item.id} value={item.id}>
-                      {stripHtml(item.name)}{item.note ? ` — ${item.note}` : ''}{item.is_vegan ? ' (vegan)' : ''}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            );
-          })}
+          <div style={{ borderTop: `1px solid ${theme.rule}`, paddingTop: 6 }}>
+            {attendees.map((a, i) => (
+              <AttendeeRow
+                key={i}
+                attendee={a}
+                index={i}
+                isLead={i === 0}
+                menu={menu || []}
+                eventType={form.eventType}
+                disabled={disabled}
+                theme={theme}
+                labelStyle={labelStyle}
+                inputStyle={inputStyle}
+                bodyFont={bodyFont}
+                labelFont={labelFont}
+                onChange={(idx, next) => {
+                  editedSinceLoad.current = true;
+                  setAttendees(prev => prev.map((row, j) => j === idx ? next : row));
+                  if (idx === 0) setForm(prev => ({ ...prev, names: next.name }));
+                }}
+                onRemove={(idx) => {
+                  editedSinceLoad.current = true;
+                  setAttendees(prev => prev.filter((_, j) => j !== idx));
+                }}
+              />
+            ))}
+            {attendees.length < 6 && (
+              <button type="button" disabled={disabled}
+                onClick={() => {
+                  editedSinceLoad.current = true;
+                  setAttendees(prev => [...prev, { name: '', firstCourseId: '', mainCourseId: '', dietary: '' }]);
+                }}
+                style={{
+                  marginTop: 12,
+                  background: 'transparent',
+                  border: `1px dashed ${theme.rule}`,
+                  color: theme.ink, cursor: disabled ? 'default' : 'pointer',
+                  fontFamily: labelFont, fontSize: 11, letterSpacing: '0.28em',
+                  textTransform: 'uppercase', padding: '10px 18px',
+                }}>+ Add another attendee</button>
+            )}
+          </div>
         </>
       )}
 
