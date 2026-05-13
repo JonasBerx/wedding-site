@@ -172,6 +172,7 @@ describe('rsvp_attendees schema', () => {
 
     const db = initDb(path);
     expect(db.getRsvpByEmail('old@x.com')).toBeNull();
+    expect(db._tableInfo('rsvp_attendees').length).toBeGreaterThan(0);
     db.close();
     require('node:fs').unlinkSync(path);
   });

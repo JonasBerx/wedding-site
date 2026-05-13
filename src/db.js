@@ -2,6 +2,7 @@ const { DatabaseSync } = require('node:sqlite');
 
 function initDb(path = 'rsvps.db') {
   const db = new DatabaseSync(path);
+  db.exec('PRAGMA foreign_keys = ON');
 
   // ── rsvps shape guard. The site has no real RSVPs yet; this is a
   // destructive reset by design. We drop and rebuild if:
@@ -61,7 +62,6 @@ function initDb(path = 'rsvps.db') {
   `);
 
   db.exec(`CREATE INDEX IF NOT EXISTS rsvp_attendees_rsvp_id ON rsvp_attendees(rsvp_id)`);
-  db.exec('PRAGMA foreign_keys = ON');
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS registry_items (
@@ -268,7 +268,14 @@ function initDb(path = 'rsvps.db') {
         'DELETE FROM registry_items WHERE id = :id AND claimed_by_rsvp_id IS NULL'
       ).run({ id });
     },
-    _tableInfo(name) { return db.prepare(`PRAGMA table_info(${name})`).all(); },
+    // Test-only helper. PRAGMA does not accept bound parameters in SQLite,
+    // so we allowlist a simple-identifier shape instead.
+    _tableInfo(name) {
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+        throw new Error(`_tableInfo: invalid table name ${name}`);
+      }
+      return db.prepare(`PRAGMA table_info(${name})`).all();
+    },
     close() { db.close(); },
   };
 }
