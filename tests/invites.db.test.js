@@ -1,4 +1,4 @@
-const { initDb } = require('../src/db');
+const { initDb, _generateInviteToken } = require('../src/db');
 
 describe('invite_tokens table', () => {
   let db;
@@ -28,5 +28,19 @@ describe('invite_tokens table', () => {
       `SELECT status FROM invite_tokens WHERE token = 'tok-abc'`
     ).get();
     expect(row.status).toBe('open');
+  });
+});
+
+describe('_generateInviteToken', () => {
+  test('returns a 22-char URL-safe base64 string', () => {
+    const t = _generateInviteToken();
+    expect(typeof t).toBe('string');
+    expect(t).toMatch(/^[A-Za-z0-9_-]{22}$/);
+  });
+
+  test('produces unique values across calls', () => {
+    const set = new Set();
+    for (let i = 0; i < 50; i++) set.add(_generateInviteToken());
+    expect(set.size).toBe(50);
   });
 });

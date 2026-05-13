@@ -351,6 +351,7 @@ function initDb(path = 'rsvps.db') {
       }
       return db.prepare(`PRAGMA table_info(${name})`).all();
     },
+    // Test-only: raw DatabaseSync handle. Do not use in production code.
     _raw: db,
     close() { db.close(); },
   };
