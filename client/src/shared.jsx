@@ -222,6 +222,7 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
     { name: '', firstCourseId: '', mainCourseId: '', dietary: '' },
   ]);
   const [uiState, setUiState] = React.useState('idle');
+  const [missingCoursesFor, setMissingCoursesFor] = React.useState(null); // index of first attendee with a missing course, or null
   const [readOnly, setReadOnly] = React.useState(false);
   const [prefillCandidate, setPrefillCandidate] = React.useState(null);
   const [lookupEmail, setLookupEmail] = React.useState('');
@@ -334,10 +335,15 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
       setUiState('deciding');
       return;
     }
-    if (form.attending === 'yes' && form.eventType === 'full' &&
-        attendees.some(a => !a.firstCourseId || !a.mainCourseId)) {
-      return;
+    if (form.attending === 'yes' && form.eventType === 'full') {
+      const badIdx = attendees.findIndex(a => !a.firstCourseId || !a.mainCourseId);
+      if (badIdx !== -1) {
+        setMissingCoursesFor(badIdx);
+        setUiState('idle'); // ensure not stuck in submitting
+        return;
+      }
     }
+    setMissingCoursesFor(null);
     setUiState('submitting');
     const body = {
       name: form.names,
@@ -604,10 +610,12 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
                     editedSinceLoad.current = true;
                     setAttendees(prev => prev.map((row, j) => j === idx ? next : row));
                     if (idx === 0) setForm(prev => ({ ...prev, names: next.name }));
+                    setMissingCoursesFor(null);
                   }}
                   onRemove={(idx) => {
                     editedSinceLoad.current = true;
                     setAttendees(prev => prev.filter((_, j) => j !== idx));
+                    setMissingCoursesFor(null);
                   }}
                 />
               ))}
@@ -616,6 +624,7 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
                   onClick={() => {
                     editedSinceLoad.current = true;
                     setAttendees(prev => [...prev, { name: '', firstCourseId: '', mainCourseId: '', dietary: '' }]);
+                    setMissingCoursesFor(null);
                   }}
                   style={{
                     marginTop: 12,
@@ -648,6 +657,11 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
       </div>
 
       {/* Error message */}
+      {missingCoursesFor !== null && (
+        <div style={{ fontFamily: bodyFont, fontSize: 15, color: theme.accent }}>
+          Please pick a first and main course for attendee {missingCoursesFor + 1}.
+        </div>
+      )}
       {uiState === 'error' && (
         <div style={{ fontFamily: bodyFont, fontSize: 15, color: theme.accent }}>
           Something went wrong — please try again or contact us directly.
