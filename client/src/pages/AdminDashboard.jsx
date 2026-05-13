@@ -64,6 +64,8 @@ const tdStyle = {
 function GuestPhotosAdminTab({ apiFetch }) {
   const [data, setData] = React.useState({ items: [], stats: { total: 0, hidden: 0, total_bytes: 0 } });
   const [qrTarget, setQrTarget] = React.useState('');
+  const [qrSvgUrl, setQrSvgUrl] = React.useState('');
+  const [qrPngUrl, setQrPngUrl] = React.useState('');
   const [filter, setFilter] = React.useState('all');
 
   const load = React.useCallback(async () => {
@@ -71,8 +73,16 @@ function GuestPhotosAdminTab({ apiFetch }) {
     if (r.ok) setData(await r.json());
     const t = await apiFetch('/api/admin/photos/qr-target');
     if (t.ok) { const j = await t.json(); setQrTarget(j.url); }
+    const svg = await apiFetch('/api/admin/photos/qr.svg');
+    if (svg.ok) setQrSvgUrl(URL.createObjectURL(await svg.blob()));
+    const png = await apiFetch('/api/admin/photos/qr.png?size=1024');
+    if (png.ok) setQrPngUrl(URL.createObjectURL(await png.blob()));
   }, [apiFetch]);
   React.useEffect(() => { load(); }, [load]);
+  React.useEffect(() => () => {
+    if (qrSvgUrl) URL.revokeObjectURL(qrSvgUrl);
+    if (qrPngUrl) URL.revokeObjectURL(qrPngUrl);
+  }, [qrSvgUrl, qrPngUrl]);
 
   async function toggleHidden(id, currentlyHidden) {
     await apiFetch(`/api/admin/photos/${id}`, null, {
@@ -111,16 +121,18 @@ function GuestPhotosAdminTab({ apiFetch }) {
           Print QR
         </summary>
         <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', marginTop: 16, flexWrap: 'wrap' }}>
-          <img src="/api/admin/photos/qr.svg" alt="QR code" style={{ width: 180, height: 180, background: 'white', border: `1px solid ${RULE}` }} />
+          {qrSvgUrl
+            ? <img src={qrSvgUrl} alt="QR code" style={{ width: 180, height: 180, background: 'white', border: `1px solid ${RULE}` }} />
+            : <div style={{ width: 180, height: 180, background: PAPER_DARK, border: `1px solid ${RULE}` }} />}
           <div style={{ fontFamily: BODY_FONT, fontSize: 14, color: INK }}>
             <div style={{ marginBottom: 6, fontFamily: LABEL_FONT, fontSize: 10, letterSpacing: '0.22em', textTransform: 'uppercase', color: LABEL }}>Encodes:</div>
             <code style={{ display: 'block', background: PAPER_DARK, border: `1px solid ${RULE_SOFT}`, padding: '6px 10px', wordBreak: 'break-all', fontSize: 13 }}>{qrTarget}</code>
             <div style={{ marginTop: 16, display: 'flex', gap: 12 }}>
-              <a href="/api/admin/photos/qr.png?size=1024" download="wedding-qr.png" style={{ textDecoration: 'none' }}>
-                <button style={outlineButton}>Download PNG (1024)</button>
+              <a href={qrPngUrl || '#'} download="wedding-qr.png" style={{ textDecoration: 'none', pointerEvents: qrPngUrl ? 'auto' : 'none', opacity: qrPngUrl ? 1 : 0.5 }}>
+                <button style={outlineButton} disabled={!qrPngUrl}>Download PNG (1024)</button>
               </a>
-              <a href="/api/admin/photos/qr.svg" download="wedding-qr.svg" style={{ textDecoration: 'none' }}>
-                <button style={outlineButton}>Download SVG</button>
+              <a href={qrSvgUrl || '#'} download="wedding-qr.svg" style={{ textDecoration: 'none', pointerEvents: qrSvgUrl ? 'auto' : 'none', opacity: qrSvgUrl ? 1 : 0.5 }}>
+                <button style={outlineButton} disabled={!qrSvgUrl}>Download SVG</button>
               </a>
             </div>
           </div>
