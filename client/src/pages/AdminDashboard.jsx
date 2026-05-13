@@ -109,6 +109,7 @@ export default function AdminDashboard() {
   const [auth, setAuth] = React.useState(null);
   const [authError, setAuthError] = React.useState('');
   const [rsvps, setRsvps] = React.useState([]);
+  const [mealCounts, setMealCounts] = React.useState([]);
   const [registry, setRegistry] = React.useState([]);
   const [newTitle, setNewTitle] = React.useState('');
   const [newDesc, setNewDesc] = React.useState('');
@@ -132,10 +133,11 @@ export default function AdminDashboard() {
   }
 
   async function loadData(creds) {
-    const [rsvpsRes, regRes, menuRes] = await Promise.all([
+    const [rsvpsRes, regRes, menuRes, mealCountsRes] = await Promise.all([
       apiFetch('/api/admin/rsvps', creds),
       apiFetch('/api/admin/registry', creds),
       apiFetch('/api/admin/menu', creds),
+      apiFetch('/api/admin/meal-counts', creds),
     ]);
     if (rsvpsRes.status === 401) {
       setAuth(null);
@@ -145,6 +147,7 @@ export default function AdminDashboard() {
     setRsvps(await rsvpsRes.json());
     setRegistry(await regRes.json());
     setMenu(await menuRes.json());
+    setMealCounts(mealCountsRes.ok ? await mealCountsRes.json() : []);
   }
 
   async function handleLogin(e) {
@@ -340,38 +343,104 @@ export default function AdminDashboard() {
         </div>
 
         {tab === 'rsvps' && (
-          <div style={{ border: `1px solid ${RULE}`, overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr>
-                  {['ID','Name','Email','Attending','Event','First','Main','Dietary','Submitted'].map(h => (
-                    <th key={h} style={thStyle}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {rsvps.map(r => (
-                  <tr key={r.id}>
-                    <td style={tdStyle}>{r.id}</td>
-                    <td style={tdStyle}>{r.name}</td>
-                    <td style={tdStyle}>{r.email}</td>
-                    <td style={tdStyle}>{r.attending ? 'Yes' : 'No'}</td>
-                    <td style={tdStyle}>{r.event_type === 'full' ? 'Full day' : r.event_type === 'ceremony_party' ? 'Ceremony / Evening' : '—'}</td>
-                    <td style={tdStyle}>{r.first_course_name || '—'}</td>
-                    <td style={tdStyle}>{r.main_course_name  || '—'}</td>
-                    <td style={tdStyle}>{r.dietary_restrictions || '—'}</td>
-                    <td style={{ ...tdStyle, color: INK_SOFT }}>{r.submitted_at}</td>
+          <>
+            <div style={{ border: `1px solid ${RULE}`, overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr>
+                    {['ID','Name','Email','Attending','Event','# Attendees','Party note','Submitted'].map(h => (
+                      <th key={h} style={thStyle}>{h}</th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-            {rsvps.length === 0 && (
-              <div style={{
-                padding: '40px', textAlign: 'center',
-                fontFamily: HEAD_FONT, fontSize: 18, fontStyle: 'italic', color: LABEL,
-              }}>No RSVPs yet.</div>
-            )}
-          </div>
+                </thead>
+                <tbody>
+                  {rsvps.map(r => (
+                    <React.Fragment key={r.id}>
+                      <tr>
+                        <td style={tdStyle}>{r.id}</td>
+                        <td style={tdStyle}>{r.name}</td>
+                        <td style={tdStyle}>{r.email}</td>
+                        <td style={tdStyle}>{r.attending ? 'Yes' : 'No'}</td>
+                        <td style={tdStyle}>
+                          {r.event_type === 'full' ? 'Full day'
+                            : r.event_type === 'ceremony_party' ? 'Ceremony / Evening'
+                            : '—'}
+                        </td>
+                        <td style={tdStyle}>{(r.attendees || []).length}</td>
+                        <td style={tdStyle}>{r.dietary_restrictions || '—'}</td>
+                        <td style={{ ...tdStyle, color: INK_SOFT }}>{r.submitted_at}</td>
+                      </tr>
+                      {(r.attendees || []).length > 0 && (
+                        <tr>
+                          <td colSpan={8} style={{ ...tdStyle, background: PAPER_DARK, paddingLeft: 36 }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                              <thead>
+                                <tr>
+                                  {['#','Name','First','Main','Dietary'].map(h => (
+                                    <th key={h} style={{ ...thStyle, background: 'transparent' }}>{h}</th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {r.attendees.map(a => (
+                                  <tr key={a.position}>
+                                    <td style={tdStyle}>{a.position}</td>
+                                    <td style={tdStyle}>{a.name}</td>
+                                    <td style={tdStyle}>{a.first_course_name || '—'}</td>
+                                    <td style={tdStyle}>{a.main_course_name  || '—'}</td>
+                                    <td style={tdStyle}>{a.dietary_restrictions || '—'}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  ))}
+                </tbody>
+              </table>
+              {rsvps.length === 0 && (
+                <div style={{
+                  padding: '40px', textAlign: 'center',
+                  fontFamily: HEAD_FONT, fontSize: 18, fontStyle: 'italic', color: LABEL,
+                }}>No RSVPs yet.</div>
+              )}
+            </div>
+
+            <div style={{ marginTop: 36 }}>
+              <h2 style={{
+                fontFamily: HEAD_FONT, fontSize: 22, color: INK,
+                margin: '0 0 16px', fontStyle: 'italic',
+              }}>Meal totals</h2>
+              <div style={{ border: `1px solid ${RULE}`, overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr>
+                      {['Course','Dish','Count'].map(h => (
+                        <th key={h} style={thStyle}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {mealCounts.map(c => (
+                      <tr key={`${c.course}:${c.menu_item_id}`}>
+                        <td style={tdStyle}>{c.course === 'first' ? 'First' : 'Main'}</td>
+                        <td style={tdStyle}>{c.name}</td>
+                        <td style={tdStyle}>{c.count}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {mealCounts.length === 0 && (
+                  <div style={{
+                    padding: 24, textAlign: 'center',
+                    fontFamily: HEAD_FONT, fontStyle: 'italic', color: LABEL,
+                  }}>No meal choices yet.</div>
+                )}
+              </div>
+            </div>
+          </>
         )}
 
         {tab === 'registry' && (
