@@ -33,6 +33,37 @@ function createAdminRouter(db) {
     res.json({ invites: rows.map(r => ({ ...r, url: buildInviteUrl(req, r.token) })) });
   });
 
+  router.post('/invites/:id/release', requireAuth, (req, res) => {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ error: 'invalid_id' });
+    }
+    let result;
+    try {
+      result = db.releaseInviteToken(id);
+    } catch (err) {
+      if (err.message === 'invite_not_found') {
+        return res.status(404).json({ error: 'invite_not_found' });
+      }
+      console.error('release invite failed:', err);
+      return res.status(500).json({ error: 'release_failed' });
+    }
+    const inv = db.getInviteById(id);
+    res.json({ invite: { ...inv, url: buildInviteUrl(req, inv.token) }, released_gift: result.released_gift });
+  });
+
+  router.delete('/invites/:id', requireAuth, (req, res) => {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ error: 'invalid_id' });
+    }
+    const existing = db.getInviteById(id);
+    if (!existing) return res.status(404).json({ error: 'invite_not_found' });
+    const changes = db.deleteInviteToken(id);
+    if (changes === 0) return res.status(409).json({ error: 'invite_in_use' });
+    res.status(204).end();
+  });
+
   router.get('/rsvps', requireAuth, (req, res) => {
     res.json(db.getAllRsvps());
   });

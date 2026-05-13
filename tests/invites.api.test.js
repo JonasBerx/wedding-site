@@ -133,3 +133,102 @@ describe('admin invite endpoints — create + list', () => {
     expect(consumed).toHaveProperty('url');
   });
 });
+
+describe('admin invite endpoints — release + delete', () => {
+  let app, db;
+  const AUTH = ['admin', 'secret'];
+  beforeEach(() => {
+    process.env.ADMIN_USER = AUTH[0];
+    process.env.ADMIN_PASSWORD = AUTH[1];
+    db = initDb(':memory:'); app = createApp(db);
+  });
+  afterEach(() => {
+    db.close();
+    delete process.env.ADMIN_USER;
+    delete process.env.ADMIN_PASSWORD;
+  });
+
+  test('release endpoint requires auth', async () => {
+    const res = await request(app).post('/api/admin/invites/1/release');
+    expect(res.status).toBe(401);
+  });
+
+  test('release deletes the linked rsvp + attendees and resets the invite', async () => {
+    const inv = db.createInviteToken({ event_type: 'ceremony_party', max_party_size: 2 });
+    const r = db.upsertRsvp({
+      name: 'A', email: 'a@x.com', attending: 1, event_type: 'ceremony_party',
+      attendees: [{ name: 'A' }, { name: 'B' }],
+    });
+    db.consumeInviteToken(inv.id, r.id);
+
+    const res = await request(app)
+      .post(`/api/admin/invites/${inv.id}/release`)
+      .auth(...AUTH);
+    expect(res.status).toBe(200);
+    expect(res.body.invite.status).toBe('released');
+    expect(res.body.invite.rsvp_id).toBeNull();
+    expect(res.body.invite).toHaveProperty('url');
+    expect(res.body.released_gift).toBeNull();
+    expect(db.getRsvpByEmail('a@x.com')).toBeNull();
+  });
+
+  test('release returns released_gift when the rsvp had a claim', async () => {
+    db.insertRegistryItem({ title: 'Honeymoon fund' });
+    const item = db.getAllRegistryItems()[0];
+    const inv = db.createInviteToken({ event_type: 'ceremony_party', max_party_size: 1 });
+    const r = db.upsertRsvp({
+      name: 'A', email: 'a@x.com', attending: 1, event_type: 'ceremony_party',
+      attendees: [{ name: 'A' }],
+    });
+    db.consumeInviteToken(inv.id, r.id);
+    db.claimRegistryItem(item.id, r.id);
+
+    const res = await request(app)
+      .post(`/api/admin/invites/${inv.id}/release`)
+      .auth(...AUTH);
+    expect(res.status).toBe(200);
+    expect(res.body.released_gift).toEqual({ title: 'Honeymoon fund' });
+  });
+
+  test('release on unknown id returns 404', async () => {
+    const res = await request(app)
+      .post('/api/admin/invites/99999/release')
+      .auth(...AUTH);
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe('invite_not_found');
+  });
+
+  test('release on non-integer id returns 400', async () => {
+    const res = await request(app)
+      .post('/api/admin/invites/abc/release')
+      .auth(...AUTH);
+    expect(res.status).toBe(400);
+  });
+
+  test('DELETE requires auth', async () => {
+    const res = await request(app).delete('/api/admin/invites/1');
+    expect(res.status).toBe(401);
+  });
+
+  test('DELETE removes open tokens, 409 on consumed', async () => {
+    const open = db.createInviteToken({ event_type: 'full', max_party_size: 2 });
+    const inv  = db.createInviteToken({ event_type: 'ceremony_party', max_party_size: 2 });
+    const r = db.upsertRsvp({
+      name: 'A', email: 'a@x.com', attending: 1, event_type: 'ceremony_party',
+      attendees: [{ name: 'A' }],
+    });
+    db.consumeInviteToken(inv.id, r.id);
+
+    const r1 = await request(app).delete(`/api/admin/invites/${open.id}`).auth(...AUTH);
+    expect(r1.status).toBe(204);
+
+    const r2 = await request(app).delete(`/api/admin/invites/${inv.id}`).auth(...AUTH);
+    expect(r2.status).toBe(409);
+    expect(r2.body.error).toBe('invite_in_use');
+  });
+
+  test('DELETE on unknown id returns 404', async () => {
+    const res = await request(app).delete('/api/admin/invites/99999').auth(...AUTH);
+    expect(res.status).toBe(404);
+  });
+});
