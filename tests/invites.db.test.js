@@ -121,6 +121,22 @@ describe('invite token helpers — create/read/consume/delete', () => {
     expect(db.consumeInviteToken(invite.id, rsvp.id)).toBe(0);
   });
 
+  test('consumeInviteToken accepts released → consumed transition', () => {
+    const r = db.upsertRsvp({
+      name: 'A', email: 'a@x.com', attending: 1, event_type: 'ceremony_party',
+      attendees: [{ name: 'A' }],
+    });
+    const inv = db.createInviteToken({ event_type: 'ceremony_party', max_party_size: 2 });
+    // Manually flip to 'released' via _raw to avoid depending on releaseInviteToken (Task 3).
+    db._raw.prepare("UPDATE invite_tokens SET status='released' WHERE id = ?").run(inv.id);
+
+    const changes = db.consumeInviteToken(inv.id, r.id);
+    expect(changes).toBe(1);
+    const after = db.getInviteById(inv.id);
+    expect(after.status).toBe('consumed');
+    expect(after.rsvp_id).toBe(r.id);
+  });
+
   test('deleteInviteToken removes open tokens and refuses consumed ones', () => {
     const openInv = db.createInviteToken({ event_type: 'full', max_party_size: 2 });
     expect(db.deleteInviteToken(openInv.id)).toBe(1);
