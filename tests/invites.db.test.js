@@ -175,3 +175,69 @@ describe('invite token helpers — create/read/consume/delete', () => {
     expect(consRow.rsvp_party_size).toBe(2);
   });
 });
+
+describe('releaseInviteToken', () => {
+  let db;
+  beforeEach(() => { db = initDb(':memory:'); });
+  afterEach(()  => { db.close(); });
+
+  test('release on a consumed invite deletes the rsvp + attendees and resets the invite', () => {
+    const inv = db.createInviteToken({ event_type: 'full', max_party_size: 2 });
+    const rsvp = db.upsertRsvp({
+      name: 'Alice', email: 'alice@example.com', attending: 1, event_type: 'full',
+      attendees: [{ name: 'Alice' }, { name: 'Bob' }],
+    });
+    db.consumeInviteToken(inv.id, rsvp.id);
+
+    const result = db.releaseInviteToken(inv.id);
+    expect(result).toEqual({ released_gift: null });
+
+    const after = db.getInviteById(inv.id);
+    expect(after.status).toBe('released');
+    expect(after.rsvp_id).toBeNull();
+    expect(after.consumed_at).toBeNull();
+
+    const rsvpRow = db._raw.prepare('SELECT * FROM rsvps WHERE id = ?').get(rsvp.id);
+    expect(rsvpRow).toBeUndefined();
+    const attendees = db._raw.prepare('SELECT * FROM rsvp_attendees WHERE rsvp_id = ?').all(rsvp.id);
+    expect(attendees.length).toBe(0);
+  });
+
+  test('release on a consumed invite whose rsvp claimed a registry item returns the gift and unclaims it', () => {
+    db.insertRegistryItem({ title: 'Honeymoon fund' });
+    const item = db.getAllRegistryItems()[0];
+    const inv = db.createInviteToken({ event_type: 'full', max_party_size: 2 });
+    const rsvp = db.upsertRsvp({
+      name: 'Alice', email: 'alice@example.com', attending: 1, event_type: 'full',
+      attendees: [{ name: 'Alice' }],
+    });
+    db.consumeInviteToken(inv.id, rsvp.id);
+    db.claimRegistryItem(item.id, rsvp.id);
+
+    const result = db.releaseInviteToken(inv.id);
+    expect(result).toEqual({ released_gift: { title: 'Honeymoon fund' } });
+
+    const itemAfter = db.getRegistryItemById(item.id);
+    expect(itemAfter.claimed_by_rsvp_id).toBeNull();
+  });
+
+  test('release on an already-released invite is idempotent', () => {
+    const inv = db.createInviteToken({ event_type: 'full', max_party_size: 2 });
+    db._raw.prepare("UPDATE invite_tokens SET status='released' WHERE id = ?").run(inv.id);
+
+    const result = db.releaseInviteToken(inv.id);
+    expect(result).toEqual({ released_gift: null });
+    expect(db.getInviteById(inv.id).status).toBe('released');
+  });
+
+  test('release on an open invite is a no-op', () => {
+    const inv = db.createInviteToken({ event_type: 'full', max_party_size: 2 });
+    const result = db.releaseInviteToken(inv.id);
+    expect(result).toEqual({ released_gift: null });
+    expect(db.getInviteById(inv.id).status).toBe('open');
+  });
+
+  test('release on an unknown id throws invite_not_found', () => {
+    expect(() => db.releaseInviteToken(999999)).toThrow(/invite_not_found/);
+  });
+});

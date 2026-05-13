@@ -395,6 +395,50 @@ function initDb(path = 'rsvps.db') {
       `).all();
     },
 
+    releaseInviteToken(inviteId) {
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        const inv = db.prepare('SELECT * FROM invite_tokens WHERE id = :id').get({ id: inviteId });
+        if (!inv) {
+          db.exec('ROLLBACK');
+          throw new Error('invite_not_found');
+        }
+        if (inv.status !== 'consumed') {
+          db.exec('COMMIT');
+          return { released_gift: null };
+        }
+
+        let released_gift = null;
+        if (inv.rsvp_id) {
+          const claim = db.prepare(
+            'SELECT id, title FROM registry_items WHERE claimed_by_rsvp_id = :rid'
+          ).get({ rid: inv.rsvp_id });
+          if (claim) {
+            db.prepare(
+              'UPDATE registry_items SET claimed_by_rsvp_id = NULL WHERE id = :id'
+            ).run({ id: claim.id });
+            released_gift = { title: claim.title };
+          }
+          // attendees cascade via FK ON DELETE CASCADE (PRAGMA foreign_keys=ON),
+          // but explicit delete is harmless safety against pragma-off setups.
+          db.prepare('DELETE FROM rsvp_attendees WHERE rsvp_id = :id').run({ id: inv.rsvp_id });
+          db.prepare('DELETE FROM rsvps WHERE id = :id').run({ id: inv.rsvp_id });
+        }
+
+        db.prepare(`
+          UPDATE invite_tokens
+             SET status = 'released', rsvp_id = NULL, consumed_at = NULL
+           WHERE id = :id
+        `).run({ id: inviteId });
+
+        db.exec('COMMIT');
+        return { released_gift };
+      } catch (err) {
+        try { db.exec('ROLLBACK'); } catch (_) { /* no active txn */ }
+        throw err;
+      }
+    },
+
     // Test-only helper. PRAGMA does not accept bound parameters in SQLite,
     // so we allowlist a simple-identifier shape instead.
     _tableInfo(name) {
