@@ -141,15 +141,23 @@ function initDb(path = 'rsvps.db') {
     },
 
     getAllRsvps() {
-      return db.prepare(`
-        SELECT r.*,
+      const rsvps = db.prepare(`SELECT * FROM rsvps ORDER BY id DESC`).all();
+      if (rsvps.length === 0) return [];
+      const ids = rsvps.map(r => r.id);
+      const placeholders = ids.map(() => '?').join(',');
+      const attendees = db.prepare(`
+        SELECT a.*,
                f.name AS first_course_name,
                m.name AS main_course_name
-        FROM rsvps r
-        LEFT JOIN menu_items f ON r.first_course_id = f.id
-        LEFT JOIN menu_items m ON r.main_course_id  = m.id
-        ORDER BY r.id DESC
-      `).all();
+        FROM rsvp_attendees a
+        LEFT JOIN menu_items f ON a.first_course_id = f.id
+        LEFT JOIN menu_items m ON a.main_course_id  = m.id
+        WHERE a.rsvp_id IN (${placeholders})
+        ORDER BY a.rsvp_id, a.position
+      `).all(...ids);
+      const grouped = new Map(rsvps.map(r => [r.id, []]));
+      for (const a of attendees) grouped.get(a.rsvp_id).push(a);
+      return rsvps.map(r => ({ ...r, attendees: grouped.get(r.id) }));
     },
 
     getRsvpByEmail(email) {

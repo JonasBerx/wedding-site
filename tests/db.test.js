@@ -227,6 +227,30 @@ describe('upsertRsvp with attendees', () => {
   });
 });
 
+describe('getAllRsvps with attendees', () => {
+  test('returns rsvps each with attendees[] and resolved course names', () => {
+    const db = initDb(':memory:');
+    const f = db.insertMenuItem({ course: 'first', name: 'Tomato' });
+    const m = db.insertMenuItem({ course: 'main',  name: 'Lamb' });
+    db.upsertRsvp({
+      name: 'Alice', email: 'a@x.com', attending: 1, event_type: 'full',
+      attendees: [
+        { name: 'Alice', first_course_id: f.lastInsertRowid, main_course_id: m.lastInsertRowid },
+        { name: 'Bob',   first_course_id: f.lastInsertRowid, main_course_id: m.lastInsertRowid, dietary_restrictions: 'vegan' },
+      ],
+    });
+    const rows = db.getAllRsvps();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].attendees).toHaveLength(2);
+    expect(rows[0].attendees[0]).toMatchObject({
+      position: 1, name: 'Alice',
+      first_course_name: 'Tomato', main_course_name: 'Lamb',
+    });
+    expect(rows[0].attendees[1].dietary_restrictions).toBe('vegan');
+    db.close();
+  });
+});
+
 describe('rsvp_attendees schema', () => {
   test('rsvp_attendees table exists with the expected columns', () => {
     const db = initDb(':memory:');
