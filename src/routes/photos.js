@@ -136,14 +136,54 @@ function createPhotosRouter(db, opts = {}) {
       res.status(201).json(toPublic(row));
     });
 
+  router.get('/', (req, res) => {
+    const limit = req.query.limit ? parseInt(req.query.limit, 10) : 30;
+    const cursor = typeof req.query.cursor === 'string' ? req.query.cursor : null;
+    const page = db.listVisibleGuestPhotos({ limit, cursor });
+    res.set('Cache-Control', 'no-store');
+    res.json({
+      items: page.items.map(toPublic),
+      next_cursor: page.next_cursor,
+    });
+  });
+
   return router;
 }
 
 createPhotosRouter.toPublic = toPublic;
 
-createPhotosRouter.mediaRouter = function mediaRouter(_db, _opts) {
-  // Implemented in Task 10
-  return express.Router();
+createPhotosRouter.mediaRouter = function mediaRouter(db, opts = {}) {
+  const mediaDir = opts.mediaDir || './media';
+  const router = express.Router();
+  const { assertSafeName } = require('../media/storage');
+
+  function findVisibleByFilename(filename, kind) {
+    const col = kind === 'thumb' ? 'thumb_filename' : 'filename';
+    const row = db._raw.prepare(`SELECT * FROM guest_photos WHERE ${col} = :f AND hidden = 0`).get({ f: filename });
+    return row || null;
+  }
+
+  router.get('/thumbs/:filename', (req, res) => {
+    try { assertSafeName(req.params.filename); }
+    catch { return res.status(400).json({ error: 'invalid filename' }); }
+    const row = findVisibleByFilename(req.params.filename, 'thumb');
+    if (!row) return res.status(404).json({ error: 'not_found' });
+    res.set('Cache-Control', 'public, max-age=31536000, immutable');
+    res.type('image/jpeg');
+    return res.sendFile(thumbPath(mediaDir, req.params.filename));
+  });
+
+  router.get('/:filename', (req, res) => {
+    try { assertSafeName(req.params.filename); }
+    catch { return res.status(400).json({ error: 'invalid filename' }); }
+    const row = findVisibleByFilename(req.params.filename, 'original');
+    if (!row) return res.status(404).json({ error: 'not_found' });
+    res.set('Cache-Control', 'public, max-age=31536000, immutable');
+    res.type(row.mime_type);
+    return res.sendFile(originalPath(mediaDir, req.params.filename));
+  });
+
+  return router;
 };
 
 module.exports = createPhotosRouter;
