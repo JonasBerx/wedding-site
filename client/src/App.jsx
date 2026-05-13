@@ -3,6 +3,7 @@ import { Routes, Route } from 'react-router-dom';
 import { VariationB } from './WeddingSite';
 import RegistryPage from './pages/RegistryPage';
 import AdminDashboard from './pages/AdminDashboard';
+import PhotosPage from './pages/PhotosPage';
 import { PaletteShell, usePaletteMode } from './PaletteShell';
 
 function HomePage() {
@@ -16,6 +17,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/registry" element={<RegistryPage />} />
+        <Route path="/photos" element={<PhotosPage />} />
         <Route path="/admin" element={<AdminDashboard />} />
       </Routes>
     </PaletteShell>
