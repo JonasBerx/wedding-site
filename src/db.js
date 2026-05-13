@@ -197,6 +197,12 @@ function initDb(path = 'rsvps.db') {
       return rsvps.map(r => ({ ...r, attendees: grouped.get(r.id) }));
     },
 
+    getEmailByRsvpId(id) {
+      if (!Number.isInteger(id)) return null;
+      const row = db.prepare('SELECT email FROM rsvps WHERE id = :id').get({ id });
+      return row ? row.email : null;
+    },
+
     getRsvpByEmail(email) {
       const normEmail = String(email || '').trim().toLowerCase();
       if (!normEmail) return null;

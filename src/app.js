@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const createRsvpRouter = require('./routes/rsvp');
+const createInviteRouter = require('./routes/invite');
 const createAdminRouter = require('./routes/admin');
 const createRegistryRouter = require('./routes/registry');
 const createMenuRouter = require('./routes/menu');
@@ -14,6 +15,7 @@ function createApp(db) {
     origin: process.env.FRONTEND_URL || '*',
   }));
   app.use('/api/rsvp', createRsvpRouter(db));
+  app.use('/api/invite', createInviteRouter(db));
   app.use('/api/admin', createAdminRouter(db));
   app.use('/api/registry', createRegistryRouter(db));
   app.use('/api/menu', createMenuRouter(db));
