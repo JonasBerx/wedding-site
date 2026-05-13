@@ -61,6 +61,117 @@ const tdStyle = {
   borderBottom: `1px solid ${RULE_SOFT}`, verticalAlign: 'top',
 };
 
+function GuestPhotosAdminTab({ apiFetch }) {
+  const [data, setData] = React.useState({ items: [], stats: { total: 0, hidden: 0, total_bytes: 0 } });
+  const [qrTarget, setQrTarget] = React.useState('');
+  const [filter, setFilter] = React.useState('all');
+
+  const load = React.useCallback(async () => {
+    const r = await apiFetch('/api/admin/photos');
+    if (r.ok) setData(await r.json());
+    const t = await apiFetch('/api/admin/photos/qr-target');
+    if (t.ok) { const j = await t.json(); setQrTarget(j.url); }
+  }, [apiFetch]);
+  React.useEffect(() => { load(); }, [load]);
+
+  async function toggleHidden(id, currentlyHidden) {
+    await apiFetch(`/api/admin/photos/${id}`, null, {
+      method: 'PATCH',
+      body: JSON.stringify({ hidden: !currentlyHidden }),
+    });
+    load();
+  }
+
+  async function remove(id) {
+    if (!window.confirm('Delete this photo? This cannot be undone.')) return;
+    await apiFetch(`/api/admin/photos/${id}`, null, { method: 'DELETE' });
+    load();
+  }
+
+  const visible = data.items.filter((i) => {
+    const isHidden = i.hidden === 1 || i.hidden === true;
+    if (filter === 'visible') return !isHidden;
+    if (filter === 'hidden') return isHidden;
+    return true;
+  });
+
+  const mb = (data.stats.total_bytes / (1024 * 1024)).toFixed(1);
+
+  return (
+    <div>
+      <h2 style={{ fontFamily: HEAD_FONT, fontSize: 28, fontStyle: 'italic', color: INK, margin: '0 0 8px' }}>
+        Guest Photos
+      </h2>
+      <div style={{ marginBottom: 20, fontFamily: LABEL_FONT, fontSize: 11, letterSpacing: '0.18em', textTransform: 'uppercase', color: LABEL }}>
+        {data.stats.total} total · {data.stats.hidden} hidden · {mb} MB used
+      </div>
+
+      <details open style={{ marginBottom: 28, border: `1px solid ${RULE}`, padding: 16 }}>
+        <summary style={{ cursor: 'pointer', fontFamily: LABEL_FONT, fontSize: 11, letterSpacing: '0.32em', textTransform: 'uppercase', color: INK }}>
+          Print QR
+        </summary>
+        <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', marginTop: 16, flexWrap: 'wrap' }}>
+          <img src="/api/admin/photos/qr.svg" alt="QR code" style={{ width: 180, height: 180, background: 'white', border: `1px solid ${RULE}` }} />
+          <div style={{ fontFamily: BODY_FONT, fontSize: 14, color: INK }}>
+            <div style={{ marginBottom: 6, fontFamily: LABEL_FONT, fontSize: 10, letterSpacing: '0.22em', textTransform: 'uppercase', color: LABEL }}>Encodes:</div>
+            <code style={{ display: 'block', background: PAPER_DARK, border: `1px solid ${RULE_SOFT}`, padding: '6px 10px', wordBreak: 'break-all', fontSize: 13 }}>{qrTarget}</code>
+            <div style={{ marginTop: 16, display: 'flex', gap: 12 }}>
+              <a href="/api/admin/photos/qr.png?size=1024" download="wedding-qr.png" style={{ textDecoration: 'none' }}>
+                <button style={outlineButton}>Download PNG (1024)</button>
+              </a>
+              <a href="/api/admin/photos/qr.svg" download="wedding-qr.svg" style={{ textDecoration: 'none' }}>
+                <button style={outlineButton}>Download SVG</button>
+              </a>
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ fontFamily: LABEL_FONT, fontSize: 10, letterSpacing: '0.22em', textTransform: 'uppercase', color: LABEL }}>Filter:</span>
+        {['all', 'visible', 'hidden'].map((f) => (
+          <button key={f} onClick={() => setFilter(f)}
+            style={{
+              ...outlineButton,
+              fontWeight: filter === f ? 700 : 400,
+              background: filter === f ? INK : 'transparent',
+              color: filter === f ? PAPER : INK,
+            }}>{f}</button>
+        ))}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 16 }}>
+        {visible.map((it) => {
+          const isHidden = it.hidden === 1 || it.hidden === true;
+          return (
+            <div key={it.id} style={{ border: `1px solid ${RULE}`, padding: 8, background: isHidden ? '#fdf0ee' : PAPER }}>
+              <img src={it.thumb_url} alt="" style={{ width: '100%', height: 140, objectFit: 'cover', display: 'block' }} />
+              <div style={{ fontFamily: BODY_FONT, fontSize: 12, marginTop: 8, color: INK_SOFT }}>
+                <div>{it.caption || <em>no caption</em>}</div>
+                {it.uploader_name && <div style={{ marginTop: 2 }}>— {it.uploader_name}</div>}
+                <div style={{ color: LABEL, marginTop: 2 }}>{new Date(it.uploaded_at).toLocaleString()}</div>
+              </div>
+              <div style={{ marginTop: 10, display: 'flex', gap: 6 }}>
+                <button onClick={() => toggleHidden(it.id, isHidden)} style={outlineButton}>
+                  {isHidden ? 'Show' : 'Hide'}
+                </button>
+                <button onClick={() => remove(it.id)} style={{ ...outlineButton, color: ACCENT, borderColor: ACCENT }}>Delete</button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {visible.length === 0 && (
+        <div style={{
+          padding: '40px', textAlign: 'center',
+          fontFamily: HEAD_FONT, fontSize: 18, fontStyle: 'italic', color: LABEL,
+        }}>No photos yet.</div>
+      )}
+    </div>
+  );
+}
+
 function SortableMenuRow({ item, onToggleVegan, onDelete }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
   const style = {
@@ -398,6 +509,7 @@ export default function AdminDashboard() {
             { key: 'registry', label: `REGISTRY · ${registry.length}` },
             { key: 'menu',     label: `MENU · ${menu.length}` },
             { key: 'invites',  label: `INVITES · ${invites.length}` },
+            { key: 'photos',   label: 'PHOTOS' },
           ].map(({ key, label }) => (
             <button
               key={key}
@@ -772,6 +884,10 @@ export default function AdminDashboard() {
               )}
             </div>
           </>
+        )}
+
+        {tab === 'photos' && (
+          <GuestPhotosAdminTab apiFetch={apiFetch} />
         )}
       </div>
 
