@@ -100,6 +100,26 @@ function initDb(path = 'rsvps.db') {
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS invite_tokens_rsvp_id ON invite_tokens(rsvp_id)`);
 
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS guest_photos (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      media_type      TEXT    NOT NULL CHECK (media_type IN ('photo','video')),
+      filename        TEXT    NOT NULL UNIQUE,
+      thumb_filename  TEXT    NOT NULL,
+      mime_type       TEXT    NOT NULL,
+      width           INTEGER,
+      height          INTEGER,
+      duration_sec    REAL,
+      size_bytes      INTEGER NOT NULL,
+      caption         TEXT,
+      uploader_name   TEXT,
+      hidden          INTEGER NOT NULL DEFAULT 0,
+      uploaded_at     TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%f','now'))
+    )
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_guest_photos_visible_uploaded
+            ON guest_photos (hidden, uploaded_at DESC, id DESC)`);
+
   return {
     insertRsvp({ name, email, attending, event_type = null, dietary_restrictions = null }) {
       return db.prepare(`
@@ -460,6 +480,72 @@ function initDb(path = 'rsvps.db') {
         try { db.exec('ROLLBACK'); } catch (_) { /* no active txn */ }
         throw err;
       }
+    },
+
+    insertGuestPhoto({ media_type, filename, thumb_filename, mime_type, width = null, height = null, duration_sec = null, size_bytes, caption = null, uploader_name = null }) {
+      const result = db.prepare(`
+        INSERT INTO guest_photos (media_type, filename, thumb_filename, mime_type, width, height, duration_sec, size_bytes, caption, uploader_name)
+        VALUES (:media_type, :filename, :thumb_filename, :mime_type, :width, :height, :duration_sec, :size_bytes, :caption, :uploader_name)
+      `).run({ media_type, filename, thumb_filename, mime_type, width, height, duration_sec, size_bytes, caption, uploader_name });
+      const id = result.lastInsertRowid;
+      const row = db.prepare('SELECT * FROM guest_photos WHERE id = :id').get({ id });
+      return { ...row, id };
+    },
+
+    getGuestPhotoById(id) {
+      return db.prepare('SELECT * FROM guest_photos WHERE id = :id').get({ id }) || null;
+    },
+
+    listVisibleGuestPhotos({ limit = 30, cursor = null } = {}) {
+      const cappedLimit = Math.min(Math.max(parseInt(limit, 10) || 30, 1), 100);
+      let rows;
+      if (cursor) {
+        const [ts, idStr] = String(cursor).split('|');
+        const cursorId = parseInt(idStr, 10);
+        rows = db.prepare(`
+          SELECT * FROM guest_photos
+          WHERE hidden = 0
+            AND (uploaded_at < :ts OR (uploaded_at = :ts AND id < :id))
+          ORDER BY uploaded_at DESC, id DESC
+          LIMIT :limit
+        `).all({ ts, id: cursorId, limit: cappedLimit + 1 });
+      } else {
+        rows = db.prepare(`
+          SELECT * FROM guest_photos
+          WHERE hidden = 0
+          ORDER BY uploaded_at DESC, id DESC
+          LIMIT :limit
+        `).all({ limit: cappedLimit + 1 });
+      }
+      const hasMore = rows.length > cappedLimit;
+      const items = hasMore ? rows.slice(0, cappedLimit) : rows;
+      const next_cursor = hasMore
+        ? `${items[items.length - 1].uploaded_at}|${items[items.length - 1].id}`
+        : null;
+      return { items, next_cursor };
+    },
+
+    listAllGuestPhotos() {
+      return db.prepare('SELECT * FROM guest_photos ORDER BY uploaded_at DESC, id DESC').all();
+    },
+
+    setGuestPhotoHidden(id, hidden) {
+      return db.prepare('UPDATE guest_photos SET hidden = :hidden WHERE id = :id')
+        .run({ id, hidden: hidden ? 1 : 0 }).changes;
+    },
+
+    deleteGuestPhoto(id) {
+      return db.prepare('DELETE FROM guest_photos WHERE id = :id').run({ id }).changes;
+    },
+
+    getGuestPhotoStats() {
+      const r = db.prepare(`
+        SELECT COUNT(*) AS total,
+               COALESCE(SUM(hidden), 0) AS hidden,
+               COALESCE(SUM(size_bytes), 0) AS total_bytes
+        FROM guest_photos
+      `).get();
+      return { total: r.total, hidden: r.hidden, total_bytes: r.total_bytes };
     },
 
     // Test-only helper. PRAGMA does not accept bound parameters in SQLite,
