@@ -8,6 +8,10 @@ function createAdminRouter(db) {
     res.json(db.getAllRsvps());
   });
 
+  router.get('/meal-counts', requireAuth, (req, res) => {
+    res.json(db.getMealCounts());
+  });
+
   router.get('/registry', requireAuth, (req, res) => {
     res.json(db.getRegistryItemsWithClaimer());
   });
