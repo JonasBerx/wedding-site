@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 
-export default function PhotoUploader({ onUploaded }) {
+export default function PhotoUploader({ onUploaded, t, fonts, isMobile }) {
   const [files, setFiles] = useState([]);
   const [caption, setCaption] = useState('');
   const [name, setName] = useState('');
   const [progress, setProgress] = useState({});
   const [busy, setBusy] = useState(false);
+  const fileInputRef = React.useRef(null);
 
   function uploadOne(file, idx) {
     return new Promise((resolve, reject) => {
@@ -36,43 +37,178 @@ export default function PhotoUploader({ onUploaded }) {
   }
 
   async function handleUpload() {
+    if (files.length === 0) return;
     setBusy(true);
     const uploaded = [];
     for (let i = 0; i < files.length; i++) {
       try { const u = await uploadOne(files[i], i); if (u) uploaded.push(u); }
-      catch (err) {}
+      catch {}
     }
     setBusy(false);
     setFiles([]);
     setCaption('');
+    setProgress({});
+    if (fileInputRef.current) fileInputRef.current.value = '';
     onUploaded && onUploaded(uploaded);
   }
 
+  const labelStyle = {
+    display: 'block',
+    fontFamily: fonts.label, fontSize: 11, letterSpacing: '0.28em',
+    textTransform: 'uppercase', color: t.label, marginBottom: 6,
+  };
+  const inputStyle = {
+    width: '100%', boxSizing: 'border-box',
+    background: 'transparent', border: 'none',
+    borderBottom: `1px solid ${t.rule}`,
+    fontFamily: fonts.body, fontSize: 17, color: t.ink,
+    padding: '10px 0 8px', outline: 'none', borderRadius: 0,
+  };
+
   return (
-    <div style={{ background: '#fbf7ee', padding: 20, borderRadius: 8, border: '1px solid #ddd0b8', maxWidth: 520, margin: '0 auto' }}>
-      <h3 style={{ marginTop: 0, fontFamily: 'serif' }}>Add your photos</h3>
-      <input type="file" multiple accept="image/*,video/*"
-        onChange={(e) => { setFiles(Array.from(e.target.files || [])); setProgress({}); }}
-        disabled={busy} />
-      <div style={{ marginTop: 12 }}>
-        <input type="text" placeholder="Caption (optional)" value={caption} onChange={(e) => setCaption(e.target.value)}
-          maxLength={300} style={{ width: '100%', padding: 8, marginBottom: 8 }} />
-        <input type="text" placeholder="Your name (optional)" value={name} onChange={(e) => setName(e.target.value)}
-          maxLength={80} style={{ width: '100%', padding: 8 }} />
+    <div style={{
+      maxWidth: 560, margin: '0 auto',
+      background: t.paper,
+      padding: isMobile ? '28px 22px 32px' : '40px 44px 42px',
+      border: `1px solid ${t.rule}`,
+      boxShadow: `7px 7px 0 ${t.accentSoft}33`,
+      transform: isMobile ? 'none' : 'rotate(-0.3deg)',
+      position: 'relative',
+    }}>
+      <div style={{
+        fontFamily: fonts.label, fontSize: 10, letterSpacing: '0.42em',
+        textTransform: 'uppercase', color: t.label, textAlign: 'center', marginBottom: 8,
+      }}>
+        add to the album
       </div>
+      <h2 style={{
+        margin: 0, marginBottom: 22,
+        fontFamily: fonts.head, fontStyle: 'italic',
+        fontSize: isMobile ? 28 : 34, color: t.ink, textAlign: 'center', lineHeight: 1.1,
+      }}>
+        Slip in a memory
+      </h2>
+
+      {/* File picker */}
+      <div style={{ marginBottom: 22 }}>
+        <span style={labelStyle}>Photos &amp; videos</span>
+        <label
+          htmlFor="photo-file-input"
+          style={{
+            display: 'block', textAlign: 'center', cursor: busy ? 'default' : 'pointer',
+            padding: isMobile ? '22px 14px' : '30px 18px',
+            border: `1px dashed ${t.rule}`,
+            background: `${t.bg}88`,
+            transition: 'border-color .2s, background .2s',
+          }}
+          onMouseEnter={(e) => { if (!busy) { e.currentTarget.style.borderColor = t.accent; } }}
+          onMouseLeave={(e) => { e.currentTarget.style.borderColor = t.rule; }}
+        >
+          <div style={{
+            fontFamily: fonts.body, fontSize: 16, color: t.ink, fontStyle: 'italic',
+          }}>
+            {files.length === 0
+              ? 'Tap to choose, or drop them here'
+              : `${files.length} file${files.length === 1 ? '' : 's'} ready`}
+          </div>
+          <div style={{
+            marginTop: 6, fontFamily: fonts.label, fontSize: 10,
+            letterSpacing: '0.32em', textTransform: 'uppercase',
+            color: t.label, opacity: 0.7,
+          }}>
+            jpg · png · heic · mp4 · mov
+          </div>
+        </label>
+        <input
+          id="photo-file-input"
+          ref={fileInputRef}
+          type="file" multiple accept="image/*,video/*"
+          onChange={(e) => { setFiles(Array.from(e.target.files || [])); setProgress({}); }}
+          disabled={busy}
+          style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}
+        />
+      </div>
+
+      {/* Caption */}
+      <div style={{ marginBottom: 18 }}>
+        <span style={labelStyle}>Caption (optional)</span>
+        <input
+          type="text" value={caption}
+          onChange={(e) => setCaption(e.target.value)}
+          maxLength={300}
+          placeholder="The dance floor at 1 a.m."
+          style={inputStyle}
+          disabled={busy}
+          onFocus={(e) => { e.target.style.borderBottomColor = t.accent; }}
+          onBlur={(e) => { e.target.style.borderBottomColor = t.rule; }}
+        />
+      </div>
+
+      {/* Name */}
+      <div style={{ marginBottom: 22 }}>
+        <span style={labelStyle}>Your name (optional)</span>
+        <input
+          type="text" value={name}
+          onChange={(e) => setName(e.target.value)}
+          maxLength={80}
+          placeholder="So we know who pinned it up"
+          style={inputStyle}
+          disabled={busy}
+          onFocus={(e) => { e.target.style.borderBottomColor = t.accent; }}
+          onBlur={(e) => { e.target.style.borderBottomColor = t.rule; }}
+        />
+      </div>
+
+      {/* Per-file progress */}
       {files.length > 0 && (
-        <ul style={{ listStyle: 'none', padding: 0, marginTop: 12 }}>
-          {files.map((f, i) => (
-            <li key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-              <span>{f.name}</span>
-              <span>{progress[i] === 'done' ? '✓' : progress[i] === 'error' ? '✕' : (progress[i] ? `${progress[i]}%` : '—')}</span>
-            </li>
-          ))}
+        <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 18px' }}>
+          {files.map((f, i) => {
+            const p = progress[i];
+            const status = p === 'done' ? '✓' : p === 'error' ? '✕' : p ? `${p}%` : '—';
+            const color = p === 'done' ? t.accent : p === 'error' ? '#a33' : t.inkSoft;
+            return (
+              <li key={i} style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+                fontFamily: fonts.body, fontSize: 14, color: t.inkSoft,
+                padding: '6px 0', borderBottom: `1px dashed ${t.rule}`,
+              }}>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '70%' }}>
+                  {f.name}
+                </span>
+                <span style={{
+                  fontFamily: fonts.label, fontSize: 11, letterSpacing: '0.18em', color,
+                }}>
+                  {status}
+                </span>
+              </li>
+            );
+          })}
         </ul>
       )}
-      <button onClick={handleUpload} disabled={busy || files.length === 0}
-        style={{ marginTop: 12, padding: '10px 20px', background: '#5a4a35', color: 'white', border: 0, cursor: 'pointer' }}>
-        {busy ? 'Uploading…' : `Upload ${files.length || ''}`}
+
+      <button
+        onClick={handleUpload}
+        disabled={busy || files.length === 0}
+        style={{
+          width: '100%', padding: '14px 0',
+          background: busy || files.length === 0 ? `${t.ink}33` : t.accent,
+          color: t.paper, border: 'none', borderRadius: 0,
+          fontFamily: fonts.label, fontSize: 12, letterSpacing: '0.36em',
+          textTransform: 'uppercase',
+          cursor: busy || files.length === 0 ? 'default' : 'pointer',
+          transition: 'transform .15s, box-shadow .15s, background .2s',
+        }}
+        onMouseEnter={(e) => {
+          if (busy || files.length === 0) return;
+          e.currentTarget.style.transform = 'translateY(-1px)';
+          e.currentTarget.style.boxShadow = `0 4px 0 ${t.accentSoft}66`;
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.transform = 'translateY(0)';
+          e.currentTarget.style.boxShadow = 'none';
+        }}
+      >
+        {busy ? 'Uploading…' : files.length === 0 ? 'Choose photos first' : `Pin up ${files.length} ${files.length === 1 ? 'photo' : 'photos'}`}
       </button>
     </div>
   );
