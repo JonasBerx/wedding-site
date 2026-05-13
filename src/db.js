@@ -1,4 +1,9 @@
 const { DatabaseSync } = require('node:sqlite');
+const crypto = require('node:crypto');
+
+function _generateInviteToken() {
+  return crypto.randomBytes(16).toString('base64url');
+}
 
 function initDb(path = 'rsvps.db') {
   const db = new DatabaseSync(path);
@@ -79,6 +84,21 @@ function initDb(path = 'rsvps.db') {
   if (!registryCols.includes('unclaimable')) {
     db.exec('ALTER TABLE registry_items ADD COLUMN unclaimable INTEGER NOT NULL DEFAULT 0');
   }
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS invite_tokens (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      token           TEXT NOT NULL UNIQUE,
+      event_type      TEXT NOT NULL CHECK (event_type IN ('full','ceremony_party')),
+      max_party_size  INTEGER NOT NULL CHECK (max_party_size BETWEEN 1 AND 6),
+      label           TEXT,
+      status          TEXT NOT NULL CHECK (status IN ('open','consumed','released')) DEFAULT 'open',
+      rsvp_id         INTEGER REFERENCES rsvps(id) ON DELETE SET NULL,
+      created_at      TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%f','now')),
+      consumed_at     TEXT
+    )
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS invite_tokens_rsvp_id ON invite_tokens(rsvp_id)`);
 
   return {
     insertRsvp({ name, email, attending, event_type = null, dietary_restrictions = null }) {
@@ -331,8 +351,9 @@ function initDb(path = 'rsvps.db') {
       }
       return db.prepare(`PRAGMA table_info(${name})`).all();
     },
+    _raw: db,
     close() { db.close(); },
   };
 }
 
-module.exports = { initDb };
+module.exports = { initDb, _generateInviteToken };
