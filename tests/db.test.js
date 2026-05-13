@@ -6,14 +6,15 @@ describe('initDb', () => {
   afterEach(()  => { db.close(); });
 
   test('rsvps table has new course-id columns and no old vegan/meal columns', () => {
-    const res = db.insertRsvp({
+    const res = db.upsertRsvp({
       name: 'A', email: 'a@x.com', attending: 1,
-      event_type: 'full', first_course_id: null, main_course_id: null,
+      event_type: 'full',
       dietary_restrictions: null,
+      attendees: [{ name: 'A', first_course_id: null, main_course_id: null }],
     });
-    expect(res.changes).toBe(1);
+    expect(typeof res.id).toBe('number');
     const all = db.getAllRsvps();
-    expect(all[0]).toEqual(expect.objectContaining({
+    expect(all[0].attendees[0]).toEqual(expect.objectContaining({
       first_course_id: null,
       main_course_id: null,
     }));
@@ -46,10 +47,10 @@ describe('initDb', () => {
   test('countRsvpsForMenuItem counts both first and main references', () => {
     const f = db.insertMenuItem({ course: 'first', name: 'F' });
     const m = db.insertMenuItem({ course: 'main',  name: 'M' });
-    db.insertRsvp({ name: 'A', email: 'a@x.com', attending: 1, event_type: 'full',
-      first_course_id: f.lastInsertRowid, main_course_id: m.lastInsertRowid });
-    db.insertRsvp({ name: 'B', email: 'b@x.com', attending: 1, event_type: 'full',
-      first_course_id: f.lastInsertRowid, main_course_id: m.lastInsertRowid });
+    db.upsertRsvp({ name: 'A', email: 'a@x.com', attending: 1, event_type: 'full',
+      attendees: [{ name: 'A', first_course_id: f.lastInsertRowid, main_course_id: m.lastInsertRowid }] });
+    db.upsertRsvp({ name: 'B', email: 'b@x.com', attending: 1, event_type: 'full',
+      attendees: [{ name: 'B', first_course_id: f.lastInsertRowid, main_course_id: m.lastInsertRowid }] });
     expect(db.countRsvpsForMenuItem(f.lastInsertRowid)).toBe(2);
     expect(db.countRsvpsForMenuItem(m.lastInsertRowid)).toBe(2);
   });
@@ -57,8 +58,8 @@ describe('initDb', () => {
   test('deleteMenuItem returns blocked when referenced and leaves item in place', () => {
     const f = db.insertMenuItem({ course: 'first', name: 'F' });
     const m = db.insertMenuItem({ course: 'main',  name: 'M' });
-    db.insertRsvp({ name: 'A', email: 'a@x.com', attending: 1, event_type: 'full',
-      first_course_id: f.lastInsertRowid, main_course_id: m.lastInsertRowid });
+    db.upsertRsvp({ name: 'A', email: 'a@x.com', attending: 1, event_type: 'full',
+      attendees: [{ name: 'A', first_course_id: f.lastInsertRowid, main_course_id: m.lastInsertRowid }] });
     const result = db.deleteMenuItem(f.lastInsertRowid);
     expect(result).toEqual({ changes: 0, blocked: true });
     expect(db.getMenuItemById(f.lastInsertRowid)).not.toBeNull();

@@ -104,11 +104,10 @@ describe('admin /api/admin/menu', () => {
   test('DELETE blocked when item is referenced by an RSVP', async () => {
     const item = db.insertMenuItem({ course: 'first', name: 'Linked' });
     const main = db.insertMenuItem({ course: 'main',  name: 'M' });
-    db.insertRsvp({
+    db.upsertRsvp({
       name: 'X', email: 'x@x.com', attending: 1,
       event_type: 'full',
-      first_course_id: item.lastInsertRowid,
-      main_course_id:  main.lastInsertRowid,
+      attendees: [{ name: 'X', first_course_id: item.lastInsertRowid, main_course_id: main.lastInsertRowid }],
     });
     const res = await request(app).delete(`/api/admin/menu/${item.lastInsertRowid}`)
       .set('Authorization', VALID_AUTH);

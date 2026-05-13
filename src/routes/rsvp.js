@@ -1,28 +1,64 @@
 const express = require('express');
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MAX_ATTENDEES = 6;
 
-const RSVP_PUBLIC_FIELDS = [
-  'name', 'email', 'attending', 'event_type',
-  'first_course_id', 'main_course_id', 'dietary_restrictions',
-];
+const RSVP_PUBLIC_FIELDS = ['name', 'email', 'attending', 'event_type', 'dietary_restrictions'];
 
 function publicShape(r) {
   const out = {};
   for (const k of RSVP_PUBLIC_FIELDS) out[k] = r[k];
+  out.attendees = (r.attendees || []).map(a => ({
+    position: a.position,
+    name: a.name,
+    first_course_id: a.first_course_id,
+    main_course_id:  a.main_course_id,
+    dietary_restrictions: a.dietary_restrictions,
+  }));
   return out;
 }
 
-// RSVP_DEADLINE — optional ISO-8601 timestamp env var. When set and in the
-// past, GET /api/rsvp returns deadline_passed:true and POST /api/rsvp
-// rejects with 409 deadline_passed. Set in Railway env to lock RSVPs after
-// the requested-by date (e.g. "2026-06-01T23:59:59Z"). Unset = no deadline.
 function deadlinePassed() {
   const v = process.env.RSVP_DEADLINE;
   if (!v) return false;
   const t = Date.parse(v);
   if (Number.isNaN(t)) return false;
   return Date.now() > t;
+}
+
+function validateAttendees(db, attendees, eventType) {
+  if (!Array.isArray(attendees) || attendees.length === 0) {
+    return { error: 'attendees array (1..6) required when attending' };
+  }
+  if (attendees.length > MAX_ATTENDEES) {
+    return { error: 'too_many_attendees' };
+  }
+  const cleaned = [];
+  for (const a of attendees) {
+    const name = typeof a?.name === 'string' ? a.name.trim() : '';
+    if (!name) return { error: 'attendee_name_required' };
+    if (name.length > 120) return { error: 'attendee_name_too_long' };
+
+    let firstId = null;
+    let mainId = null;
+    if (eventType === 'full') {
+      if (!Number.isInteger(a.first_course_id) || !Number.isInteger(a.main_course_id)) {
+        return { error: 'first_course_id and main_course_id are required for full-day guests' };
+      }
+      const f = db.getMenuItemById(a.first_course_id);
+      const m = db.getMenuItemById(a.main_course_id);
+      if (!f || !m) return { error: 'menu_item_not_found' };
+      if (f.course !== 'first' || m.course !== 'main') {
+        return { error: 'course mismatch: first_course_id must reference a first course, main_course_id a main course' };
+      }
+      firstId = f.id;
+      mainId = m.id;
+    }
+    const diet = typeof a.dietary_restrictions === 'string' && a.dietary_restrictions.trim()
+      ? a.dietary_restrictions.trim() : null;
+    cleaned.push({ name, first_course_id: firstId, main_course_id: mainId, dietary_restrictions: diet });
+  }
+  return { cleaned };
 }
 
 function createRsvpRouter(db) {
@@ -39,8 +75,7 @@ function createRsvpRouter(db) {
   router.post('/', (req, res) => {
     if (deadlinePassed()) return res.status(409).json({ error: 'deadline_passed' });
 
-    const { name, email, attending, event_type, first_course_id, main_course_id, dietary_restrictions } = req.body;
-
+    const { name, email, attending, event_type, dietary_restrictions, attendees } = req.body;
     const trimmedName  = typeof name  === 'string' ? name.trim()  : '';
     const trimmedEmail = typeof email === 'string' ? email.trim() : '';
 
@@ -52,28 +87,17 @@ function createRsvpRouter(db) {
     }
 
     let dbEventType = null;
-    let dbFirstId   = null;
-    let dbMainId    = null;
+    let dbAttendees = [];
 
     if (attending) {
       if (event_type !== 'full' && event_type !== 'ceremony_party') {
         return res.status(400).json({ error: "event_type must be 'full' or 'ceremony_party'" });
       }
       dbEventType = event_type;
-
-      if (event_type === 'full') {
-        if (!Number.isInteger(first_course_id) || !Number.isInteger(main_course_id)) {
-          return res.status(400).json({ error: 'first_course_id and main_course_id are required for full-day guests' });
-        }
-        const f = db.getMenuItemById(first_course_id);
-        const m = db.getMenuItemById(main_course_id);
-        if (!f || !m) return res.status(400).json({ error: 'menu_item_not_found' });
-        if (f.course !== 'first' || m.course !== 'main') {
-          return res.status(400).json({ error: 'course mismatch: first_course_id must reference a first course, main_course_id a main course' });
-        }
-        dbFirstId = f.id;
-        dbMainId  = m.id;
-      }
+      const v = validateAttendees(db, attendees, event_type);
+      if (v.error) return res.status(400).json({ error: v.error });
+      dbAttendees = v.cleaned;
+      dbAttendees[0].name = trimmedName;
     }
 
     let result;
@@ -83,9 +107,9 @@ function createRsvpRouter(db) {
         email: trimmedEmail,
         attending: attending ? 1 : 0,
         event_type: dbEventType,
-        first_course_id: dbFirstId,
-        main_course_id:  dbMainId,
-        dietary_restrictions: dietary_restrictions || null,
+        dietary_restrictions: typeof dietary_restrictions === 'string' && dietary_restrictions.trim()
+          ? dietary_restrictions.trim() : null,
+        attendees: dbAttendees,
       });
     } catch (err) {
       console.error('RSVP upsert failed:', err);

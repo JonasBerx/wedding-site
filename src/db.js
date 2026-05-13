@@ -81,11 +81,11 @@ function initDb(path = 'rsvps.db') {
   }
 
   return {
-    insertRsvp({ name, email, attending, event_type = null, first_course_id = null, main_course_id = null, dietary_restrictions = null }) {
+    insertRsvp({ name, email, attending, event_type = null, dietary_restrictions = null }) {
       return db.prepare(`
-        INSERT INTO rsvps (name, email, attending, event_type, first_course_id, main_course_id, dietary_restrictions)
-        VALUES (:name, :email, :attending, :event_type, :first_course_id, :main_course_id, :dietary_restrictions)
-      `).run({ name, email, attending, event_type, first_course_id, main_course_id, dietary_restrictions });
+        INSERT INTO rsvps (name, email, attending, event_type, dietary_restrictions)
+        VALUES (:name, :email, :attending, :event_type, :dietary_restrictions)
+      `).run({ name, email, attending, event_type, dietary_restrictions });
     },
 
     upsertRsvp({ name, email, attending, event_type = null, dietary_restrictions = null, attendees = [] }) {

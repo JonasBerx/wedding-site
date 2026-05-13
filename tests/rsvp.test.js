@@ -22,8 +22,9 @@ describe('POST /api/rsvp', () => {
     const res = await request(app).post('/api/rsvp').send({
       name: 'Alice', email: 'alice@example.com', attending: true,
       event_type: 'full',
-      first_course_id: f.lastInsertRowid,
-      main_course_id:  m.lastInsertRowid,
+      attendees: [
+        { name: 'Alice', first_course_id: f.lastInsertRowid, main_course_id: m.lastInsertRowid },
+      ],
     });
     expect(res.status).toBe(201);
   });
@@ -31,7 +32,7 @@ describe('POST /api/rsvp', () => {
   test('full-day rejects when first_course_id missing', async () => {
     const res = await request(app).post('/api/rsvp').send({
       name: 'A', email: 'a@x.com', attending: true, event_type: 'full',
-      main_course_id: 1,
+      attendees: [{ name: 'A', main_course_id: 1 }],
     });
     expect(res.status).toBe(400);
   });
@@ -41,8 +42,7 @@ describe('POST /api/rsvp', () => {
     const m = db.insertMenuItem({ course: 'main',  name: 'Lamb' });
     const res = await request(app).post('/api/rsvp').send({
       name: 'A', email: 'a@x.com', attending: true, event_type: 'full',
-      first_course_id: m.lastInsertRowid, // wrong course
-      main_course_id:  f.lastInsertRowid, // wrong course
+      attendees: [{ name: 'A', first_course_id: m.lastInsertRowid, main_course_id: f.lastInsertRowid }],
     });
     expect(res.status).toBe(400);
   });
@@ -50,7 +50,7 @@ describe('POST /api/rsvp', () => {
   test('full-day rejects when course id does not exist', async () => {
     const res = await request(app).post('/api/rsvp').send({
       name: 'A', email: 'a@x.com', attending: true, event_type: 'full',
-      first_course_id: 999, main_course_id: 1000,
+      attendees: [{ name: 'A', first_course_id: 999, main_course_id: 1000 }],
     });
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/menu_item_not_found/);
@@ -59,23 +59,21 @@ describe('POST /api/rsvp', () => {
   test('ceremony_party stores null for both course ids', async () => {
     const res = await request(app).post('/api/rsvp').send({
       name: 'B', email: 'b@x.com', attending: true, event_type: 'ceremony_party',
-      first_course_id: 1, main_course_id: 1, // should be ignored
+      attendees: [{ name: 'B', first_course_id: 1, main_course_id: 1 }],
     });
     expect(res.status).toBe(201);
     const stored = db.getRsvpByEmail('b@x.com');
-    expect(stored.first_course_id).toBeNull();
-    expect(stored.main_course_id).toBeNull();
+    expect(stored.attendees[0].first_course_id).toBeNull();
+    expect(stored.attendees[0].main_course_id).toBeNull();
   });
 
   test('not attending stores null for both course ids', async () => {
     const res = await request(app).post('/api/rsvp').send({
       name: 'C', email: 'c@x.com', attending: false,
-      first_course_id: 1, main_course_id: 1,
     });
     expect(res.status).toBe(201);
     const stored = db.getRsvpByEmail('c@x.com');
-    expect(stored.first_course_id).toBeNull();
-    expect(stored.main_course_id).toBeNull();
+    expect(stored.attendees).toEqual([]);
   });
 
   // ── general field validation ───────────────────────────────
@@ -90,7 +88,7 @@ describe('POST /api/rsvp', () => {
   });
 
   test('stores attending as 1 for true, 0 for false', async () => {
-    await request(app).post('/api/rsvp').send({ name: 'A', email: 'a@b.com', attending: true, event_type: 'ceremony_party' });
+    await request(app).post('/api/rsvp').send({ name: 'A', email: 'a@b.com', attending: true, event_type: 'ceremony_party', attendees: [{ name: 'A' }] });
     await request(app).post('/api/rsvp').send({ name: 'B', email: 'b@b.com', attending: false });
     const [b, a] = db.getAllRsvps();
     expect(a.attending).toBe(1);
@@ -103,6 +101,7 @@ describe('POST /api/rsvp', () => {
       email: '  alice@example.com  ',
       attending: true,
       event_type: 'ceremony_party',
+      attendees: [{ name: 'Alice' }],
     });
     expect(res.status).toBe(201);
     const [rsvp] = db.getAllRsvps();
@@ -182,6 +181,43 @@ describe('POST /api/rsvp', () => {
     });
     expect(res.status).toBe(400);
   });
+
+  test('full-day requires at least one attendee', async () => {
+    const res = await request(app).post('/api/rsvp').send({
+      name: 'A', email: 'a@x.com', attending: true, event_type: 'full',
+      attendees: [],
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/attendees/);
+  });
+
+  test('caps attendees at 6', async () => {
+    const f = db.insertMenuItem({ course: 'first', name: 'X' });
+    const m = db.insertMenuItem({ course: 'main',  name: 'Y' });
+    const seven = Array.from({ length: 7 }, (_, i) => ({
+      name: `P${i+1}`, first_course_id: f.lastInsertRowid, main_course_id: m.lastInsertRowid,
+    }));
+    const res = await request(app).post('/api/rsvp').send({
+      name: 'P1', email: 'a@x.com', attending: true, event_type: 'full',
+      attendees: seven,
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/too_many_attendees/);
+  });
+
+  test('lead attendee name is forced to top-level name', async () => {
+    const f = db.insertMenuItem({ course: 'first', name: 'X' });
+    const m = db.insertMenuItem({ course: 'main',  name: 'Y' });
+    const res = await request(app).post('/api/rsvp').send({
+      name: 'Top Name', email: 'a@x.com', attending: true, event_type: 'full',
+      attendees: [
+        { name: 'WRONG', first_course_id: f.lastInsertRowid, main_course_id: m.lastInsertRowid },
+      ],
+    });
+    expect(res.status).toBe(201);
+    const stored = db.getRsvpByEmail('a@x.com');
+    expect(stored.attendees[0].name).toBe('Top Name');
+  });
 });
 
 describe('GET /api/rsvp', () => {
@@ -224,11 +260,14 @@ describe('GET /api/rsvp', () => {
     const f = db.insertMenuItem({ course: 'first', name: 'Tomato' });
     const m = db.insertMenuItem({ course: 'main',  name: 'Lamb' });
     db.upsertRsvp({
-      name: 'Alice', email: 'alice@example.com', attending: 1,
-      event_type: 'full',
-      first_course_id: f.lastInsertRowid,
-      main_course_id:  m.lastInsertRowid,
+      name: 'Alice', email: 'alice@example.com', attending: 1, event_type: 'full',
       dietary_restrictions: 'gluten free',
+      attendees: [{
+        name: 'Alice',
+        first_course_id: f.lastInsertRowid,
+        main_course_id:  m.lastInsertRowid,
+        dietary_restrictions: null,
+      }],
     });
     const res = await request(app).get('/api/rsvp?email=alice@example.com');
     expect(res.status).toBe(200);
@@ -238,9 +277,14 @@ describe('GET /api/rsvp', () => {
       email: 'alice@example.com',
       attending: 1,
       event_type: 'full',
-      first_course_id: f.lastInsertRowid,
-      main_course_id:  m.lastInsertRowid,
       dietary_restrictions: 'gluten free',
+      attendees: [{
+        position: 1,
+        name: 'Alice',
+        first_course_id: f.lastInsertRowid,
+        main_course_id:  m.lastInsertRowid,
+        dietary_restrictions: null,
+      }],
     });
   });
 
@@ -288,7 +332,7 @@ describe('POST /api/rsvp upsert + deadline + release', () => {
   test('first POST inserts and returns was_update:false', async () => {
     const res = await request(app).post('/api/rsvp').send({
       name: 'Alice', email: 'alice@example.com', attending: true,
-      event_type: 'ceremony_party',
+      event_type: 'ceremony_party', attendees: [{ name: 'Alice' }],
     });
     expect(res.status).toBe(201);
     expect(res.body.was_update).toBe(false);
@@ -298,7 +342,7 @@ describe('POST /api/rsvp upsert + deadline + release', () => {
   test('second POST with same email updates and returns was_update:true', async () => {
     await request(app).post('/api/rsvp').send({
       name: 'Alice', email: 'alice@example.com', attending: true,
-      event_type: 'ceremony_party',
+      event_type: 'ceremony_party', attendees: [{ name: 'Alice' }],
     });
     const res = await request(app).post('/api/rsvp').send({
       name: 'Alice C', email: 'alice@example.com', attending: false,
@@ -314,7 +358,7 @@ describe('POST /api/rsvp upsert + deadline + release', () => {
     process.env.RSVP_DEADLINE = '2000-01-01T00:00:00Z';
     const res = await request(app).post('/api/rsvp').send({
       name: 'Alice', email: 'alice@example.com', attending: true,
-      event_type: 'ceremony_party',
+      event_type: 'ceremony_party', attendees: [{ name: 'Alice' }],
     });
     expect(res.status).toBe(409);
     expect(res.body.error).toBe('deadline_passed');
@@ -327,7 +371,7 @@ describe('POST /api/rsvp upsert + deadline + release', () => {
 
     await request(app).post('/api/rsvp').send({
       name: 'Alice', email: 'alice@example.com', attending: true,
-      event_type: 'ceremony_party',
+      event_type: 'ceremony_party', attendees: [{ name: 'Alice' }],
     });
     const rsvp = db.getRsvpByEmail('alice@example.com');
     db.claimRegistryItem(item.id, rsvp.id);
@@ -345,7 +389,7 @@ describe('POST /api/rsvp upsert + deadline + release', () => {
   test('release: yes->no with no claim does not include released_gift', async () => {
     await request(app).post('/api/rsvp').send({
       name: 'Alice', email: 'alice@example.com', attending: true,
-      event_type: 'ceremony_party',
+      event_type: 'ceremony_party', attendees: [{ name: 'Alice' }],
     });
     const res = await request(app).post('/api/rsvp').send({
       name: 'Alice', email: 'alice@example.com', attending: false,
@@ -363,14 +407,14 @@ describe('POST /api/rsvp upsert + deadline + release', () => {
     await request(app).post('/api/rsvp').send({
       name: 'Alice', email: 'alice@example.com', attending: true,
       event_type: 'full',
-      first_course_id: f.lastInsertRowid, main_course_id: m.lastInsertRowid,
+      attendees: [{ name: 'Alice', first_course_id: f.lastInsertRowid, main_course_id: m.lastInsertRowid }],
     });
     const rsvp = db.getRsvpByEmail('alice@example.com');
     db.claimRegistryItem(item.id, rsvp.id);
 
     const res = await request(app).post('/api/rsvp').send({
       name: 'Alice', email: 'alice@example.com', attending: true,
-      event_type: 'ceremony_party',
+      event_type: 'ceremony_party', attendees: [{ name: 'Alice' }],
     });
     expect(res.status).toBe(201);
     expect(res.body).not.toHaveProperty('released_gift');
@@ -380,7 +424,7 @@ describe('POST /api/rsvp upsert + deadline + release', () => {
   test('case-insensitive email upsert (Alice@... and alice@... become one row)', async () => {
     await request(app).post('/api/rsvp').send({
       name: 'Alice', email: 'Alice@Example.COM', attending: true,
-      event_type: 'ceremony_party',
+      event_type: 'ceremony_party', attendees: [{ name: 'Alice' }],
     });
     const res = await request(app).post('/api/rsvp').send({
       name: 'Alice C', email: 'alice@example.com', attending: false,
