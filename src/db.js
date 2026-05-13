@@ -49,10 +49,17 @@ function initDb(path = 'rsvps.db') {
       attending INTEGER NOT NULL,
       event_type TEXT,
       dietary_restrictions TEXT,
+      song TEXT,
       submitted_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')),
       updated_at TEXT
     )
   `);
+
+  // Idempotent migration for existing rsvps tables created before `song` was added.
+  const rsvpColsNow = db.prepare('PRAGMA table_info(rsvps)').all().map(c => c.name);
+  if (!rsvpColsNow.includes('song')) {
+    db.exec('ALTER TABLE rsvps ADD COLUMN song TEXT');
+  }
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS rsvp_attendees (
@@ -128,7 +135,7 @@ function initDb(path = 'rsvps.db') {
       `).run({ name, email, attending, event_type, dietary_restrictions });
     },
 
-    upsertRsvp({ name, email, attending, event_type = null, dietary_restrictions = null, attendees = [] }, opts = {}) {
+    upsertRsvp({ name, email, attending, event_type = null, dietary_restrictions = null, song = null, attendees = [] }, opts = {}) {
       const { consumeInviteId = null } = opts;
       const normEmail = String(email || '').trim().toLowerCase();
       db.exec('BEGIN IMMEDIATE');
@@ -142,15 +149,16 @@ function initDb(path = 'rsvps.db') {
               attending = :attending,
               event_type = :event_type,
               dietary_restrictions = :dietary_restrictions,
+              song = :song,
               updated_at = strftime('%Y-%m-%dT%H:%M:%f','now')
             WHERE id = :id
-          `).run({ id: existing.id, name, attending, event_type, dietary_restrictions });
+          `).run({ id: existing.id, name, attending, event_type, dietary_restrictions, song });
           outcome = { id: existing.id, was_update: true, prev_attending: existing.attending };
         } else {
           const result = db.prepare(`
-            INSERT INTO rsvps (name, email, attending, event_type, dietary_restrictions)
-            VALUES (:name, :email, :attending, :event_type, :dietary_restrictions)
-          `).run({ name, email: normEmail, attending, event_type, dietary_restrictions });
+            INSERT INTO rsvps (name, email, attending, event_type, dietary_restrictions, song)
+            VALUES (:name, :email, :attending, :event_type, :dietary_restrictions, :song)
+          `).run({ name, email: normEmail, attending, event_type, dietary_restrictions, song });
           outcome = { id: result.lastInsertRowid, was_update: false, prev_attending: null };
         }
 

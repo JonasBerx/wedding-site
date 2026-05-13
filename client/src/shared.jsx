@@ -260,6 +260,19 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
   const [lookupResolved, setLookupResolved] = React.useState(false);
   const [lookupBusy, setLookupBusy] = React.useState(false);
   const [lookupNotFound, setLookupNotFound] = React.useState(false);
+  const formAnchorRef = React.useRef(null);
+  const didAutoScrollRef = React.useRef(false);
+
+  React.useEffect(() => {
+    if (didAutoScrollRef.current) return;
+    if (!inviteParam || inviteLoading) return;
+    const el = formAnchorRef.current;
+    if (!el) return;
+    didAutoScrollRef.current = true;
+    requestAnimationFrame(() => {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }, [inviteParam, inviteLoading]);
 
   React.useEffect(() => {
     if (!inviteParam) { setInviteLoading(false); return; }
@@ -292,6 +305,7 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
       attending: r.attending === 1 ? 'yes' : 'no',
       eventType: r.event_type || 'full',
       partyNote: r.dietary_restrictions || '',
+      song: r.song || '',
     }));
     const list = Array.isArray(r.attendees) && r.attendees.length > 0
       ? r.attendees.map(a => ({
@@ -391,6 +405,7 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
       email: form.email,
       attending: form.attending === 'yes',
       dietary_restrictions: form.partyNote || null,
+      song: form.song?.trim() || null,
     };
     if (form.attending === 'yes') {
       body.event_type = form.eventType;
@@ -537,7 +552,7 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
       finally { setLookupBusy(false); }
     };
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
+      <div ref={formAnchorRef} style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
         <p style={{ fontFamily: bodyFont, fontSize: 16, color: theme.ink, margin: 0, lineHeight: 1.5 }}>
           {inviteMode === 'consumed'
             ? "This invite has already been used. Enter your email to view or edit your RSVP."
@@ -573,7 +588,9 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
 
   const submitting = uiState === 'submitting';
   const fullDay = form.attending === 'yes' && form.eventType === 'full';
-  const menuMissing = fullDay && (menu === null || menu.length === 0);
+  // Only treat the menu as "missing" after the fetch resolves and returns empty.
+  // While `menu === null` we're still loading — don't lock the whole form for that.
+  const menuMissing = fullDay && menu !== null && menu.length === 0;
   const disabled = submitting || menuMissing || readOnly;
 
   const RadioDot = ({ selected }) => (
@@ -589,7 +606,7 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
   );
 
   return (
-    <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 26 }}>
+    <form ref={formAnchorRef} onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 26 }}>
 
       {readOnly && (
         <div style={{

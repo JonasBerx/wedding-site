@@ -3,7 +3,7 @@ const express = require('express');
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_ATTENDEES = 6;
 
-const RSVP_PUBLIC_FIELDS = ['name', 'email', 'attending', 'event_type', 'dietary_restrictions'];
+const RSVP_PUBLIC_FIELDS = ['name', 'email', 'attending', 'event_type', 'dietary_restrictions', 'song'];
 
 function publicShape(r) {
   const out = {};
@@ -75,7 +75,7 @@ function createRsvpRouter(db) {
   router.post('/', (req, res) => {
     if (deadlinePassed()) return res.status(409).json({ error: 'deadline_passed' });
 
-    const { name, email, attending, event_type, token, dietary_restrictions, attendees } = req.body;
+    const { name, email, attending, event_type, token, dietary_restrictions, song, attendees } = req.body;
     const trimmedName  = typeof name  === 'string' ? name.trim()  : '';
     const trimmedEmail = typeof email === 'string' ? email.trim() : '';
 
@@ -134,6 +134,7 @@ function createRsvpRouter(db) {
         event_type: dbEventType,
         dietary_restrictions: typeof dietary_restrictions === 'string' && dietary_restrictions.trim()
           ? dietary_restrictions.trim() : null,
+        song: typeof song === 'string' && song.trim() ? song.trim() : null,
         attendees: dbAttendees,
       }, consumeInviteId ? { consumeInviteId } : {});
     } catch (err) {

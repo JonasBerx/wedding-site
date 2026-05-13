@@ -15,7 +15,7 @@ function RsvpSection({ t, fonts }) {
         <div style={{ textAlign: 'center', marginBottom: isMobile ? 32 : 50 }}>
           <SectionHead t={t} fonts={fonts}
             kicker="please &amp; thank you" title="Tell us you're coming"
-            subtitle="By the first of June, if you can. The pétanque set in your honour is on standby." align="center" />
+            subtitle="By the eight of July, if you can. The pétanque set in your honour is on standby." align="center" />
         </div>
 
         <div style={{

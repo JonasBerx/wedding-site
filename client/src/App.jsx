@@ -16,6 +16,7 @@ export default function App() {
     <PaletteShell>
       <Routes>
         <Route path="/" element={<HomePage />} />
+        <Route path="/rsvp" element={<HomePage />} />
         <Route path="/registry" element={<RegistryPage />} />
         <Route path="/photos" element={<PhotosPage />} />
         <Route path="/admin" element={<AdminDashboard />} />

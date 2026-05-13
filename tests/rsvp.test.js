@@ -268,6 +268,7 @@ describe('GET /api/rsvp', () => {
       attending: 1,
       event_type: 'full',
       dietary_restrictions: 'gluten free',
+      song: null,
       attendees: [{
         position: 1,
         name: 'Alice',
@@ -276,6 +277,27 @@ describe('GET /api/rsvp', () => {
         dietary_restrictions: null,
       }],
     });
+  });
+
+  test('song roundtrips through POST and GET (trimmed, empty → null)', async () => {
+    const inv1 = db.createInviteToken({ event_type: 'ceremony_party', max_party_size: 2 });
+    await request(app).post('/api/rsvp').send({
+      name: 'A', email: 'a@x.com', attending: true,
+      token: inv1.token,
+      song: '  Edith Piaf — La Vie en Rose  ',
+      attendees: [{ name: 'A' }],
+    });
+    const r1 = await request(app).get('/api/rsvp?email=a@x.com');
+    expect(r1.body.rsvp.song).toBe('Edith Piaf — La Vie en Rose');
+
+    // Edit clears the song to empty string → stored as null.
+    await request(app).post('/api/rsvp').send({
+      name: 'A', email: 'a@x.com', attending: true, event_type: 'ceremony_party',
+      song: '   ',
+      attendees: [{ name: 'A' }],
+    });
+    const r2 = await request(app).get('/api/rsvp?email=a@x.com');
+    expect(r2.body.rsvp.song).toBeNull();
   });
 
   test('reports deadline_passed:true when RSVP_DEADLINE is in the past', async () => {
