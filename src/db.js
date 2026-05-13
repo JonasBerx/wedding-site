@@ -293,6 +293,36 @@ function initDb(path = 'rsvps.db') {
         'DELETE FROM registry_items WHERE id = :id AND claimed_by_rsvp_id IS NULL'
       ).run({ id });
     },
+    getMealCounts() {
+      const firstRows = db.prepare(`
+        SELECT m.id   AS menu_item_id,
+               m.name AS name,
+               m.sort_order,
+               COUNT(*) AS count
+        FROM rsvp_attendees a
+        JOIN rsvps r       ON a.rsvp_id = r.id
+        JOIN menu_items m  ON a.first_course_id = m.id
+        WHERE r.attending = 1 AND r.event_type = 'full'
+        GROUP BY m.id
+        ORDER BY m.sort_order ASC, m.id ASC
+      `).all().map(r => ({ course: 'first', menu_item_id: r.menu_item_id, name: r.name, count: r.count }));
+
+      const mainRows = db.prepare(`
+        SELECT m.id   AS menu_item_id,
+               m.name AS name,
+               m.sort_order,
+               COUNT(*) AS count
+        FROM rsvp_attendees a
+        JOIN rsvps r       ON a.rsvp_id = r.id
+        JOIN menu_items m  ON a.main_course_id = m.id
+        WHERE r.attending = 1 AND r.event_type = 'full'
+        GROUP BY m.id
+        ORDER BY m.sort_order ASC, m.id ASC
+      `).all().map(r => ({ course: 'main', menu_item_id: r.menu_item_id, name: r.name, count: r.count }));
+
+      return [...firstRows, ...mainRows];
+    },
+
     // Test-only helper. PRAGMA does not accept bound parameters in SQLite,
     // so we allowlist a simple-identifier shape instead.
     _tableInfo(name) {

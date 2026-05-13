@@ -278,3 +278,39 @@ describe('rsvp_attendees schema', () => {
     require('node:fs').unlinkSync(path);
   });
 });
+
+describe('getMealCounts', () => {
+  test('aggregates per-dish counts from attending=full attendees only', () => {
+    const db = initDb(':memory:');
+    const burrata = db.insertMenuItem({ course: 'first', name: 'Burrata' }).lastInsertRowid;
+    const tartare = db.insertMenuItem({ course: 'first', name: 'Tartare' }).lastInsertRowid;
+    const duck    = db.insertMenuItem({ course: 'main',  name: 'Duck'    }).lastInsertRowid;
+    const salmon  = db.insertMenuItem({ course: 'main',  name: 'Salmon'  }).lastInsertRowid;
+
+    db.upsertRsvp({
+      name: 'Alice', email: 'a@x.com', attending: 1, event_type: 'full',
+      attendees: [
+        { name: 'Alice', first_course_id: burrata, main_course_id: duck },
+        { name: 'Bob',   first_course_id: tartare, main_course_id: duck },
+      ],
+    });
+    db.upsertRsvp({
+      name: 'Cara', email: 'c@x.com', attending: 1, event_type: 'full',
+      attendees: [{ name: 'Cara', first_course_id: burrata, main_course_id: salmon }],
+    });
+    db.upsertRsvp({
+      name: 'Dan', email: 'd@x.com', attending: 1, event_type: 'ceremony_party',
+      attendees: [{ name: 'Dan' }],
+    });
+    db.upsertRsvp({ name: 'Eve', email: 'e@x.com', attending: 0, event_type: null, attendees: [] });
+
+    const counts = db.getMealCounts();
+    expect(counts).toEqual([
+      { course: 'first', menu_item_id: burrata, name: 'Burrata', count: 2 },
+      { course: 'first', menu_item_id: tartare, name: 'Tartare', count: 1 },
+      { course: 'main',  menu_item_id: duck,    name: 'Duck',    count: 2 },
+      { course: 'main',  menu_item_id: salmon,  name: 'Salmon',  count: 1 },
+    ]);
+    db.close();
+  });
+});
