@@ -22,10 +22,14 @@ describe('admin QR', () => {
   });
 
   test('GET qr.svg returns image/svg+xml encoding the upload URL', async () => {
-    const res = await request(app).get('/api/admin/photos/qr.svg').set('Authorization', AUTH);
+    const res = await request(app).get('/api/admin/photos/qr.svg').set('Authorization', AUTH).buffer(true).parse((res, cb) => {
+      const data = [];
+      res.on('data', (c) => data.push(c));
+      res.on('end', () => cb(null, Buffer.concat(data)));
+    });
     expect(res.status).toBe(200);
-    expect(res.headers['content-type']).toMatch(/svg/);
-    expect(res.text).toMatch(/<svg/);
+    expect(res.headers['content-type']).toMatch(/image\/svg\+xml/);
+    expect(res.body.toString('utf8')).toMatch(/<svg/);
   });
 
   test('GET qr.png returns image/png', async () => {

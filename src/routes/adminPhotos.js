@@ -23,7 +23,7 @@ function createAdminPhotosRouter(db, opts = {}) {
   router.get('/qr.svg', requireAuth, async (req, res) => {
     try {
       const svg = await QRCode.toString(qrTargetUrl(), { type: 'svg', errorCorrectionLevel: 'M', margin: 4 });
-      res.type('application/svg+xml').send(svg);
+      res.type('image/svg+xml').send(svg);
     } catch (err) {
       console.error('QR svg error:', err);
       res.status(500).json({ error: 'qr_failed' });
