@@ -21,6 +21,8 @@ const RULE_SOFT = 'rgba(46,34,24,0.08)';
 
 function b64(user, pass) { return btoa(`${user}:${pass}`); }
 
+const AUTH_STORAGE_KEY = 'weddingAdminAuth';
+
 const inputStyle = {
   width: '100%', boxSizing: 'border-box',
   background: 'transparent', border: 'none',
@@ -229,7 +231,9 @@ export default function AdminDashboard() {
   const [tab, setTab] = React.useState('rsvps');
   const [user, setUser] = React.useState('');
   const [pass, setPass] = React.useState('');
-  const [auth, setAuth] = React.useState(null);
+  const [auth, setAuth] = React.useState(() => {
+    try { return localStorage.getItem(AUTH_STORAGE_KEY); } catch { return null; }
+  });
   const [authError, setAuthError] = React.useState('');
   const [rsvps, setRsvps] = React.useState([]);
   const [mealCounts, setMealCounts] = React.useState([]);
@@ -261,6 +265,11 @@ export default function AdminDashboard() {
     });
   }
 
+  React.useEffect(() => {
+    if (auth) loadData(auth);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function loadData(creds) {
     const [rsvpsRes, regRes, menuRes, mealCountsRes, invitesRes] = await Promise.all([
       apiFetch('/api/admin/rsvps', creds),
@@ -271,6 +280,7 @@ export default function AdminDashboard() {
     ]);
     if (rsvpsRes.status === 401) {
       setAuth(null);
+      try { localStorage.removeItem(AUTH_STORAGE_KEY); } catch {}
       setAuthError('Session expired. Please log in again.');
       return;
     }
@@ -355,6 +365,7 @@ export default function AdminDashboard() {
       return;
     }
     setAuth(creds);
+    try { localStorage.setItem(AUTH_STORAGE_KEY, creds); } catch {}
     await loadData(creds);
   }
 
