@@ -10,6 +10,7 @@ const createMenuRouter = require('./routes/menu');
 const createPhotosRouter = require('./routes/photos');
 const createAdminPhotosRouter = require('./routes/adminPhotos');
 const { createAdminMenuRouter } = createMenuRouter;
+const { errorHandler } = require('./middleware/errorHandler');
 
 function createApp(db, opts = {}) {
   const mediaDir = opts.mediaDir || './media';
@@ -35,6 +36,8 @@ function createApp(db, opts = {}) {
   const distDir = path.join(__dirname, '../dist');
   app.use(express.static(distDir));
   app.get('*', (req, res) => res.sendFile(path.join(distDir, 'index.html')));
+
+  app.use(errorHandler);
 
   return app;
 }
