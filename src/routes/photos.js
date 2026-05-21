@@ -1,9 +1,8 @@
 const express = require('express');
 const fs = require('node:fs');
-const path = require('node:path');
 const crypto = require('node:crypto');
 const multer = require('multer');
-const { setGuestCookie, requireGuestSession } = require('../middleware/guestSession');
+const { setGuestCookie } = require('../middleware/guestSession');
 const { createRateLimiter } = require('../middleware/rateLimit');
 const { sniff, isAllowed, isImage, isVideo } = require('../media/sniff');
 const { processImage } = require('../media/imageProcessor');
@@ -47,7 +46,9 @@ function createPhotosRouter(db, opts = {}) {
     keyFn: (req) => (req.signedCookies && req.signedCookies.guest_upload) ? req.ip : 'anon',
   });
 
-  router.post('/session', (req, res) => {
+  const sessionLimiter = createRateLimiter({ max: 10, windowMs: 10 * 60 * 1000 });
+
+  router.post('/session', sessionLimiter, (req, res) => {
     const pw = req.body && typeof req.body.password === 'string' ? req.body.password : null;
     if (!pw) return res.status(400).json({ error: 'password required' });
     const expected = process.env.GUEST_UPLOAD_PASSWORD;
@@ -114,7 +115,7 @@ function createPhotosRouter(db, opts = {}) {
       try {
         fs.writeFileSync(oPath, processed.buffer);
         fs.writeFileSync(tPath, processed.thumb_buffer);
-      } catch (err) {
+      } catch {
         try { fs.unlinkSync(oPath); } catch (_) {}
         try { fs.unlinkSync(tPath); } catch (_) {}
         return res.status(500).json({ error: 'write_failed' });

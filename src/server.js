@@ -4,9 +4,10 @@ const path = require('node:path');
 const { initDb } = require('./db');
 const { createApp } = require('./app');
 const { ensureMediaDirs } = require('./media/storage');
+const { resolveDbPath } = require('./config');
 
 const mediaDir = process.env.MEDIA_DIR || (process.env.NODE_ENV === 'production' ? '/data/guest-photos' : './media');
-const dbPath = process.env.DB_PATH || 'rsvps.db';
+const dbPath = resolveDbPath(process.env);
 
 console.log(`[boot] NODE_ENV=${process.env.NODE_ENV || '(unset)'}`);
 console.log(`[boot] DB_PATH=${dbPath}`);

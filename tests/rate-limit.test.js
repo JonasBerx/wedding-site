@@ -33,4 +33,21 @@ describe('rate limiter', () => {
     now = 1500;
     const c = makeReqRes(k); limiter(c.req, c.res, () => {}); expect(c.res.statusCode).toBe(200);
   });
+
+  test('evicts expired buckets when a new bucket is allocated', () => {
+    let now = 0;
+    const limiter = createRateLimiter({ max: 5, windowMs: 1000, keyFn: (req) => req._key, nowFn: () => now });
+
+    const a = makeReqRes('a');
+    limiter(a.req, a.res, () => {});
+    expect(limiter._buckets.has('a')).toBe(true);
+
+    now = 2000; // 'a' bucket's window (resetAt 1000) is now expired
+    const b = makeReqRes('b');
+    limiter(b.req, b.res, () => {});
+
+    expect(limiter._buckets.has('a')).toBe(false);
+    expect(limiter._buckets.has('b')).toBe(true);
+    expect(limiter._buckets.size).toBe(1);
+  });
 });

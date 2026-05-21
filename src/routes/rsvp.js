@@ -1,4 +1,5 @@
 const express = require('express');
+const { createRateLimiter } = require('../middleware/rateLimit');
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_ATTENDEES = 6;
@@ -64,6 +65,8 @@ function validateAttendees(db, attendees, eventType) {
 function createRsvpRouter(db) {
   const router = express.Router();
 
+  const rsvpLimiter = createRateLimiter({ max: 20, windowMs: 10 * 60 * 1000 });
+
   router.get('/', (req, res) => {
     const raw = typeof req.query.email === 'string' ? req.query.email.trim() : '';
     if (!raw) return res.json({ deadline_passed: deadlinePassed(), rsvp: null });
@@ -72,7 +75,7 @@ function createRsvpRouter(db) {
     res.json({ deadline_passed: deadlinePassed(), rsvp: r ? publicShape(r) : null });
   });
 
-  router.post('/', (req, res) => {
+  router.post('/', rsvpLimiter, (req, res) => {
     if (deadlinePassed()) return res.status(409).json({ error: 'deadline_passed' });
 
     const { name, email, attending, event_type, token, dietary_restrictions, song, attendees } = req.body;

@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
 const path = require('path');
 const cookieParser = require('cookie-parser');
 const createRsvpRouter = require('./routes/rsvp');
@@ -10,15 +11,38 @@ const createMenuRouter = require('./routes/menu');
 const createPhotosRouter = require('./routes/photos');
 const createAdminPhotosRouter = require('./routes/adminPhotos');
 const { createAdminMenuRouter } = createMenuRouter;
+const { errorHandler } = require('./middleware/errorHandler');
+const { createRateLimiter } = require('./middleware/rateLimit');
 
 function createApp(db, opts = {}) {
   const mediaDir = opts.mediaDir || './media';
   const cookieSecret = process.env.COOKIE_SECRET || 'dev-cookie-secret';
 
   const app = express();
+  app.use(helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+        fontSrc: ["'self'", 'https://fonts.gstatic.com'],
+        imgSrc: ["'self'", 'data:'],
+        mediaSrc: ["'self'"],
+        connectSrc: ["'self'"],
+        objectSrc: ["'none'"],
+        baseUri: ["'self'"],
+        frameAncestors: ["'self'"],
+      },
+    },
+  }));
   app.use(express.json());
   app.use(cookieParser(cookieSecret));
-  app.use(cors({ origin: process.env.FRONTEND_URL || '*', credentials: true }));
+  if (process.env.FRONTEND_URL) {
+    app.use(cors({ origin: process.env.FRONTEND_URL, credentials: true }));
+  }
+
+  const adminLimiter = createRateLimiter({ max: 100, windowMs: 10 * 60 * 1000 });
+  app.use('/api/admin', adminLimiter);
 
   app.use('/api/rsvp', createRsvpRouter(db));
   app.use('/api/invite', createInviteRouter(db));
@@ -35,6 +59,8 @@ function createApp(db, opts = {}) {
   const distDir = path.join(__dirname, '../dist');
   app.use(express.static(distDir));
   app.get('*', (req, res) => res.sendFile(path.join(distDir, 'index.html')));
+
+  app.use(errorHandler);
 
   return app;
 }

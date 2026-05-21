@@ -66,9 +66,9 @@ describe('initDb', () => {
   });
 
   test('deleteMenuItem compacts sort_order in the same course', () => {
-    const a = db.insertMenuItem({ course: 'first', name: 'A' });
+    db.insertMenuItem({ course: 'first', name: 'A' });
     const b = db.insertMenuItem({ course: 'first', name: 'B' });
-    const c = db.insertMenuItem({ course: 'first', name: 'C' });
+    db.insertMenuItem({ course: 'first', name: 'C' });
     db.deleteMenuItem(b.lastInsertRowid);
     const items = db.getMenuItems('first');
     expect(items.map(i => [i.name, i.sort_order])).toEqual([['A', 0], ['C', 1]]);
@@ -137,7 +137,7 @@ describe('initDb', () => {
   });
 
   test('upsertRsvp sets updated_at on update', () => {
-    const a = db.upsertRsvp({
+    db.upsertRsvp({
       name: 'Alice', email: 'alice@example.com', attending: 1,
       event_type: 'evening',
     });
