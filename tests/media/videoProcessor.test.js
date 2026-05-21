@@ -1,7 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
-const { processVideo, MAX_DURATION_SEC } = require('../../src/media/videoProcessor');
+const { processVideo } = require('../../src/media/videoProcessor');
 
 const fx = (n) => path.join(__dirname, '..', 'fixtures', n);
 

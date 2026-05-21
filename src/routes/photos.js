@@ -1,9 +1,8 @@
 const express = require('express');
 const fs = require('node:fs');
-const path = require('node:path');
 const crypto = require('node:crypto');
 const multer = require('multer');
-const { setGuestCookie, requireGuestSession } = require('../middleware/guestSession');
+const { setGuestCookie } = require('../middleware/guestSession');
 const { createRateLimiter } = require('../middleware/rateLimit');
 const { sniff, isAllowed, isImage, isVideo } = require('../media/sniff');
 const { processImage } = require('../media/imageProcessor');
@@ -116,7 +115,7 @@ function createPhotosRouter(db, opts = {}) {
       try {
         fs.writeFileSync(oPath, processed.buffer);
         fs.writeFileSync(tPath, processed.thumb_buffer);
-      } catch (err) {
+      } catch {
         try { fs.unlinkSync(oPath); } catch (_) {}
         try { fs.unlinkSync(tPath); } catch (_) {}
         return res.status(500).json({ error: 'write_failed' });

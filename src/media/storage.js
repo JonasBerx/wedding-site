@@ -25,7 +25,7 @@ function thumbPath(mediaDir, filename) {
 }
 
 function deleteFiles(mediaDir, originalName, thumbName) {
-  for (const [n, p] of [[originalName, originalPath(mediaDir, originalName)], [thumbName, thumbPath(mediaDir, thumbName)]]) {
+  for (const [, p] of [[originalName, originalPath(mediaDir, originalName)], [thumbName, thumbPath(mediaDir, thumbName)]]) {
     try { fs.unlinkSync(p); } catch (err) { if (err.code !== 'ENOENT') throw err; }
   }
 }

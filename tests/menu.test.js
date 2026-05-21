@@ -91,9 +91,9 @@ describe('admin /api/admin/menu', () => {
   });
 
   test('DELETE removes unreferenced item and compacts order', async () => {
-    const a = db.insertMenuItem({ course: 'first', name: 'A' });
+    db.insertMenuItem({ course: 'first', name: 'A' });
     const b = db.insertMenuItem({ course: 'first', name: 'B' });
-    const c = db.insertMenuItem({ course: 'first', name: 'C' });
+    db.insertMenuItem({ course: 'first', name: 'C' });
     const res = await request(app).delete(`/api/admin/menu/${b.lastInsertRowid}`)
       .set('Authorization', VALID_AUTH);
     expect(res.status).toBe(204);

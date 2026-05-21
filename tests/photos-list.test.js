@@ -29,7 +29,7 @@ describe('GET /api/photos', () => {
 
   test('lists visible photos newest first; excludes hidden', async () => {
     const a = db.insertGuestPhoto({ media_type:'photo', filename:'a.jpg', thumb_filename:'a.jpg', mime_type:'image/jpeg', size_bytes:1 });
-    const b = db.insertGuestPhoto({ media_type:'photo', filename:'b.jpg', thumb_filename:'b.jpg', mime_type:'image/jpeg', size_bytes:1 });
+    db.insertGuestPhoto({ media_type:'photo', filename:'b.jpg', thumb_filename:'b.jpg', mime_type:'image/jpeg', size_bytes:1 });
     db.setGuestPhotoHidden(a.id, 1);
     const res = await request(app).get('/api/photos');
     expect(res.body.items.map(i => i.filename)).toEqual(['b.jpg']);

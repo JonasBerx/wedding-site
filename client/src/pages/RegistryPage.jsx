@@ -7,7 +7,7 @@ import Toast from '../components/Toast';
 import ClaimModal from '../components/ClaimModal';
 
 const SESSION_KEY = 'registryEmail';
-const ICONS = [<Wildflower size={20} />, <Lavender size={20} />, <Sprig size={20} />];
+const ICONS = [<Wildflower key="wf" size={20} />, <Lavender key="lv" size={20} />, <Sprig key="sp" size={20} />];
 
 export default function RegistryPage() {
   const { t, fonts } = usePaletteMode();
@@ -173,9 +173,9 @@ export default function RegistryPage() {
 
           const tilts = [-1.4, 0.7, -0.5];
           const cardIcons = [
-            <Wildflower size={42} />,
-            <Lavender size={36} />,
-            <Sprig size={36} />,
+            <Wildflower key="wf" size={42} />,
+            <Lavender key="lv" size={36} />,
+            <Sprig key="sp" size={36} />,
           ];
 
           return (

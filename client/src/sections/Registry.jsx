@@ -77,9 +77,9 @@ function RegistrySection({ t, fonts }) {
 
   const tilts = [-1.4, 0.7, -0.5];
   const icons = [
-    <Wildflower size={42} />,
-    <Lavender size={36} />,
-    <Sprig size={36} />,
+    <Wildflower key="wf" size={42} />,
+    <Lavender key="lv" size={36} />,
+    <Sprig key="sp" size={36} />,
   ];
 
   const gridStyle = {
