@@ -52,7 +52,7 @@ describe('invite token helpers — create/read/consume/delete', () => {
 
   test('createInviteToken inserts an open token with random unique token and correct fields', () => {
     const row1 = db.createInviteToken({ event_type: 'full', max_party_size: 2, label: 'Alice + Bob' });
-    const row2 = db.createInviteToken({ event_type: 'ceremony_party', max_party_size: 4 });
+    const row2 = db.createInviteToken({ event_type: 'evening', max_party_size: 4 });
     expect(row1.id).toBeGreaterThan(0);
     expect(typeof row1.token).toBe('string');
     expect(row1.token).toMatch(/^[A-Za-z0-9_-]{22}$/);
@@ -123,10 +123,10 @@ describe('invite token helpers — create/read/consume/delete', () => {
 
   test('consumeInviteToken accepts released → consumed transition', () => {
     const r = db.upsertRsvp({
-      name: 'A', email: 'a@x.com', attending: 1, event_type: 'ceremony_party',
+      name: 'A', email: 'a@x.com', attending: 1, event_type: 'evening',
       attendees: [{ name: 'A' }],
     });
-    const inv = db.createInviteToken({ event_type: 'ceremony_party', max_party_size: 2 });
+    const inv = db.createInviteToken({ event_type: 'evening', max_party_size: 2 });
     // Manually flip to 'released' via _raw to avoid depending on releaseInviteToken (Task 3).
     db._raw.prepare("UPDATE invite_tokens SET status='released' WHERE id = ?").run(inv.id);
 
@@ -153,7 +153,7 @@ describe('invite token helpers — create/read/consume/delete', () => {
   });
 
   test('getAllInvitesWithRsvp joins rsvp data with attendee count', () => {
-    const openInv = db.createInviteToken({ event_type: 'ceremony_party', max_party_size: 3, label: 'open one' });
+    const openInv = db.createInviteToken({ event_type: 'evening', max_party_size: 3, label: 'open one' });
     const consumedInv = db.createInviteToken({ event_type: 'full', max_party_size: 4, label: 'consumed one' });
     const rsvp = db.upsertRsvp({
       name: 'Dana', email: 'dana@example.com', attending: 1, event_type: 'full',
@@ -248,9 +248,9 @@ describe('upsertRsvp + consumeInviteId atomicity', () => {
   afterEach(() => { db.close(); });
 
   test('consumes the invite in the same transaction as the rsvp insert', () => {
-    const inv = db.createInviteToken({ event_type: 'ceremony_party', max_party_size: 2 });
+    const inv = db.createInviteToken({ event_type: 'evening', max_party_size: 2 });
     const r = db.upsertRsvp({
-      name: 'A', email: 'a@x.com', attending: 1, event_type: 'ceremony_party',
+      name: 'A', email: 'a@x.com', attending: 1, event_type: 'evening',
       attendees: [{ name: 'A' }],
     }, { consumeInviteId: inv.id });
 
@@ -261,9 +261,9 @@ describe('upsertRsvp + consumeInviteId atomicity', () => {
   });
 
   test('omitting consumeInviteId leaves invite_consumed=false and does not touch any invite', () => {
-    const inv = db.createInviteToken({ event_type: 'ceremony_party', max_party_size: 2 });
+    const inv = db.createInviteToken({ event_type: 'evening', max_party_size: 2 });
     const r = db.upsertRsvp({
-      name: 'A', email: 'a@x.com', attending: 1, event_type: 'ceremony_party',
+      name: 'A', email: 'a@x.com', attending: 1, event_type: 'evening',
       attendees: [{ name: 'A' }],
     });
     expect(r.invite_consumed).toBe(false);
@@ -271,16 +271,16 @@ describe('upsertRsvp + consumeInviteId atomicity', () => {
   });
 
   test('second call against the same invite throws invite_already_used and does not insert the second rsvp', () => {
-    const inv = db.createInviteToken({ event_type: 'ceremony_party', max_party_size: 2 });
+    const inv = db.createInviteToken({ event_type: 'evening', max_party_size: 2 });
     const r1 = db.upsertRsvp({
-      name: 'A', email: 'a@x.com', attending: 1, event_type: 'ceremony_party',
+      name: 'A', email: 'a@x.com', attending: 1, event_type: 'evening',
       attendees: [{ name: 'A' }],
     }, { consumeInviteId: inv.id });
     expect(r1.invite_consumed).toBe(true);
 
     expect(() =>
       db.upsertRsvp({
-        name: 'B', email: 'b@x.com', attending: 1, event_type: 'ceremony_party',
+        name: 'B', email: 'b@x.com', attending: 1, event_type: 'evening',
         attendees: [{ name: 'B' }],
       }, { consumeInviteId: inv.id })
     ).toThrow(/invite_already_used/);

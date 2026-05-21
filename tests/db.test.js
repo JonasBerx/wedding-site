@@ -91,20 +91,20 @@ describe('initDb', () => {
   test('upsertRsvp inserts on first call with was_update:false', () => {
     const r = db.upsertRsvp({
       name: 'Alice', email: 'alice@example.com', attending: 1,
-      event_type: 'ceremony_party',
+      event_type: 'evening',
     });
     expect(r.was_update).toBe(false);
     expect(r.prev_attending).toBeNull();
     expect(typeof r.id).toBe('number');
     const stored = db.getRsvpByEmail('alice@example.com');
     expect(stored.name).toBe('Alice');
-    expect(stored.event_type).toBe('ceremony_party');
+    expect(stored.event_type).toBe('evening');
   });
 
   test('upsertRsvp updates on duplicate email and reports prev_attending', () => {
     db.upsertRsvp({
       name: 'Alice', email: 'alice@example.com', attending: 1,
-      event_type: 'ceremony_party',
+      event_type: 'evening',
     });
     const r = db.upsertRsvp({
       name: 'Alice Cooper', email: 'alice@example.com', attending: 0,
@@ -120,7 +120,7 @@ describe('initDb', () => {
   test('upsertRsvp normalises email to lowercase + trim', () => {
     db.upsertRsvp({
       name: 'Alice', email: '  Alice@Example.COM  ', attending: 1,
-      event_type: 'ceremony_party',
+      event_type: 'evening',
     });
     const stored = db.getRsvpByEmail('alice@example.com');
     expect(stored).not.toBeNull();
@@ -130,7 +130,7 @@ describe('initDb', () => {
   test('getRsvpByEmail matches case-insensitively', () => {
     db.upsertRsvp({
       name: 'Alice', email: 'alice@example.com', attending: 1,
-      event_type: 'ceremony_party',
+      event_type: 'evening',
     });
     expect(db.getRsvpByEmail('ALICE@example.com')).not.toBeNull();
     expect(db.getRsvpByEmail('  alice@example.com  ')).not.toBeNull();
@@ -139,7 +139,7 @@ describe('initDb', () => {
   test('upsertRsvp sets updated_at on update', () => {
     const a = db.upsertRsvp({
       name: 'Alice', email: 'alice@example.com', attending: 1,
-      event_type: 'ceremony_party',
+      event_type: 'evening',
     });
     const before = db.getRsvpByEmail('alice@example.com');
     expect(before.updated_at).toBeNull();
@@ -214,7 +214,7 @@ describe('upsertRsvp with attendees', () => {
 
   test('rolls back if an attendee insert fails (bad FK)', () => {
     db.upsertRsvp({
-      name: 'Alice', email: 'a@x.com', attending: 1, event_type: 'ceremony_party',
+      name: 'Alice', email: 'a@x.com', attending: 1, event_type: 'evening',
       attendees: [{ name: 'Alice' }],
     });
     expect(() => db.upsertRsvp({
@@ -223,7 +223,7 @@ describe('upsertRsvp with attendees', () => {
     })).toThrow();
     // Previous state survives.
     const rsvp = db.getRsvpByEmail('a@x.com');
-    expect(rsvp.event_type).toBe('ceremony_party');
+    expect(rsvp.event_type).toBe('evening');
     expect(rsvp.attendees.map(a => a.name)).toEqual(['Alice']);
   });
 });
@@ -275,6 +275,43 @@ describe('rsvp_attendees schema', () => {
     const db = initDb(path);
     expect(db.getRsvpByEmail('old@x.com')).toBeNull();
     expect(db._tableInfo('rsvp_attendees').length).toBeGreaterThan(0);
+    db.close();
+    require('node:fs').unlinkSync(path);
+  });
+
+  test('initDb migrates legacy invite_tokens to the 3-value event_type constraint', () => {
+    const { DatabaseSync } = require('node:sqlite');
+    const path = require('node:path').join(require('node:os').tmpdir(), `wedplan-inv-${Date.now()}.db`);
+    const raw = new DatabaseSync(path);
+    // Modern rsvps + rsvp_attendees so the rsvps shape guard leaves them alone.
+    raw.exec(`CREATE TABLE rsvps (id INTEGER PRIMARY KEY, name TEXT, email TEXT UNIQUE,
+              attending INTEGER, event_type TEXT, dietary_restrictions TEXT, song TEXT,
+              submitted_at TEXT, updated_at TEXT)`);
+    raw.exec(`CREATE TABLE rsvp_attendees (id INTEGER PRIMARY KEY, rsvp_id INTEGER, position INTEGER,
+              name TEXT, first_course_id INTEGER, main_course_id INTEGER, dietary_restrictions TEXT)`);
+    raw.exec(`CREATE TABLE invite_tokens (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      token TEXT NOT NULL UNIQUE,
+      event_type TEXT NOT NULL CHECK (event_type IN ('full','ceremony_party')),
+      max_party_size INTEGER NOT NULL CHECK (max_party_size BETWEEN 1 AND 6),
+      label TEXT,
+      status TEXT NOT NULL CHECK (status IN ('open','consumed','released')) DEFAULT 'open',
+      rsvp_id INTEGER,
+      created_at TEXT,
+      consumed_at TEXT)`);
+    raw.exec(`INSERT INTO invite_tokens (token, event_type, max_party_size) VALUES ('legacy-tok','full',2)`);
+    raw.close();
+
+    const db = initDb(path);
+    // Existing row is preserved.
+    const kept = db.getInviteByToken('legacy-tok');
+    expect(kept).not.toBeNull();
+    expect(kept.event_type).toBe('full');
+    // New values are now accepted.
+    expect(() => db.createInviteToken({ event_type: 'ceremony', max_party_size: 2 })).not.toThrow();
+    expect(() => db.createInviteToken({ event_type: 'evening', max_party_size: 2 })).not.toThrow();
+    // The retired value is now rejected.
+    expect(() => db.createInviteToken({ event_type: 'ceremony_party', max_party_size: 2 })).toThrow();
     db.close();
     require('node:fs').unlinkSync(path);
   });
@@ -330,7 +367,7 @@ describe('getMealCounts', () => {
       attendees: [{ name: 'Cara', first_course_id: burrata, main_course_id: salmon }],
     });
     db.upsertRsvp({
-      name: 'Dan', email: 'd@x.com', attending: 1, event_type: 'ceremony_party',
+      name: 'Dan', email: 'd@x.com', attending: 1, event_type: 'evening',
       attendees: [{ name: 'Dan' }],
     });
     db.upsertRsvp({ name: 'Eve', email: 'e@x.com', attending: 0, event_type: null, attendees: [] });
