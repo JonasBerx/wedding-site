@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
 const path = require('path');
 const cookieParser = require('cookie-parser');
 const createRsvpRouter = require('./routes/rsvp');
@@ -17,9 +18,27 @@ function createApp(db, opts = {}) {
   const cookieSecret = process.env.COOKIE_SECRET || 'dev-cookie-secret';
 
   const app = express();
+  app.use(helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+        fontSrc: ["'self'", 'https://fonts.gstatic.com'],
+        imgSrc: ["'self'", 'data:'],
+        mediaSrc: ["'self'"],
+        connectSrc: ["'self'"],
+        objectSrc: ["'none'"],
+        baseUri: ["'self'"],
+        frameAncestors: ["'self'"],
+      },
+    },
+  }));
   app.use(express.json());
   app.use(cookieParser(cookieSecret));
-  app.use(cors({ origin: process.env.FRONTEND_URL || '*', credentials: true }));
+  if (process.env.FRONTEND_URL) {
+    app.use(cors({ origin: process.env.FRONTEND_URL, credentials: true }));
+  }
 
   app.use('/api/rsvp', createRsvpRouter(db));
   app.use('/api/invite', createInviteRouter(db));
