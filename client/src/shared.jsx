@@ -695,7 +695,9 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
             marginTop: 8, fontFamily: bodyFont, fontSize: 16, color: theme.ink,
           }}>
             You're invited to:{' '}
-            <strong>{invite.event_type === 'full' ? 'The full day' : 'The ceremony & evening reception'}</strong>
+            <strong>{invite.event_type === 'full' ? 'The full day'
+              : invite.event_type === 'ceremony' ? 'The ceremony'
+              : 'The evening reception'}</strong>
           </div>
         </div>
       )}
@@ -703,7 +705,7 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
         <div>
           <span style={labelStyle}>Day plan</span>
           <div style={{ display: 'flex', gap: 24, marginTop: 8, flexWrap: 'wrap' }}>
-            {[['full', 'Full day (ceremony + dinner + party)'], ['ceremony_party', 'Ceremony or evening only']].map(([val, lbl]) => {
+            {[['full', 'Full day (ceremony + dinner + party)'], ['ceremony', 'Ceremony only'], ['evening', 'Evening only']].map(([val, lbl]) => {
               const radiosDisabled = (inviteMode === 'consumed' || inviteMode === 'no_invite') && lookupResolved;
               return (
                 <label key={val} style={{
@@ -822,13 +824,15 @@ function RSVPForm({ theme, headlineFont, labelFont, bodyFont, ctaLabel = 'Send o
           placeholder="arrival time, accessibility, etc." />
       </div>
 
-      {/* Song */}
-      <div>
-        <span style={labelStyle}>A song to dance to</span>
-        <input style={inputStyle} disabled={disabled} value={form.song}
-          onChange={(e) => updateForm({ song: e.target.value })}
-          placeholder="something we'll love" />
-      </div>
+      {/* Song — not shown for ceremony-only guests (no dancing at the ceremony) */}
+      {form.eventType !== 'ceremony' && (
+        <div>
+          <span style={labelStyle}>A song to dance to</span>
+          <input style={inputStyle} disabled={disabled} value={form.song}
+            onChange={(e) => updateForm({ song: e.target.value })}
+            placeholder="something we'll love" />
+        </div>
+      )}
 
       {/* Error message */}
       {missingCoursesFor !== null && (
