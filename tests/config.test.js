@@ -17,4 +17,12 @@ describe('resolveDbPath', () => {
   test('an empty DB_PATH is ignored', () => {
     expect(resolveDbPath({ DB_PATH: '', NODE_ENV: 'production' })).toBe('/data/rsvps.db');
   });
+
+  test('a whitespace-only DB_PATH is ignored', () => {
+    expect(resolveDbPath({ DB_PATH: '   ', NODE_ENV: 'production' })).toBe('/data/rsvps.db');
+  });
+
+  test('a DB_PATH with surrounding whitespace is trimmed', () => {
+    expect(resolveDbPath({ DB_PATH: '  /custom/x.db  ' })).toBe('/custom/x.db');
+  });
 });
