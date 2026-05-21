@@ -47,7 +47,9 @@ function createPhotosRouter(db, opts = {}) {
     keyFn: (req) => (req.signedCookies && req.signedCookies.guest_upload) ? req.ip : 'anon',
   });
 
-  router.post('/session', (req, res) => {
+  const sessionLimiter = createRateLimiter({ max: 10, windowMs: 10 * 60 * 1000 });
+
+  router.post('/session', sessionLimiter, (req, res) => {
     const pw = req.body && typeof req.body.password === 'string' ? req.body.password : null;
     if (!pw) return res.status(400).json({ error: 'password required' });
     const expected = process.env.GUEST_UPLOAD_PASSWORD;

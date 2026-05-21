@@ -29,4 +29,13 @@ describe('POST /api/photos/session', () => {
     const res = await request(app).post('/api/photos/session').send({});
     expect(res.status).toBe(400);
   });
+
+  test('rate-limits POST /api/photos/session after 10 attempts', async () => {
+    let last;
+    for (let i = 0; i < 11; i++) {
+      last = await request(app).post('/api/photos/session').send({ password: 'wrong' });
+    }
+    expect(last.status).toBe(429);
+    expect(last.body.error).toBe('rate_limited');
+  });
 });

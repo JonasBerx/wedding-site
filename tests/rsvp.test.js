@@ -685,4 +685,15 @@ describe('POST /api/rsvp invite-token gating', () => {
     expect(res.status).toBe(409);
     expect(res.body.error).toBe('deadline_passed');
   });
+
+  test('rate-limits POST /api/rsvp after 20 requests in the window', async () => {
+    let last;
+    for (let i = 0; i < 21; i++) {
+      last = await request(app).post('/api/rsvp').send({
+        name: 'Spammer', email: 'spam@x.com', attending: false,
+      });
+    }
+    expect(last.status).toBe(429);
+    expect(last.body.error).toBe('rate_limited');
+  });
 });

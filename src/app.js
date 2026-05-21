@@ -12,6 +12,7 @@ const createPhotosRouter = require('./routes/photos');
 const createAdminPhotosRouter = require('./routes/adminPhotos');
 const { createAdminMenuRouter } = createMenuRouter;
 const { errorHandler } = require('./middleware/errorHandler');
+const { createRateLimiter } = require('./middleware/rateLimit');
 
 function createApp(db, opts = {}) {
   const mediaDir = opts.mediaDir || './media';
@@ -39,6 +40,9 @@ function createApp(db, opts = {}) {
   if (process.env.FRONTEND_URL) {
     app.use(cors({ origin: process.env.FRONTEND_URL, credentials: true }));
   }
+
+  const adminLimiter = createRateLimiter({ max: 100, windowMs: 10 * 60 * 1000 });
+  app.use('/api/admin', adminLimiter);
 
   app.use('/api/rsvp', createRsvpRouter(db));
   app.use('/api/invite', createInviteRouter(db));

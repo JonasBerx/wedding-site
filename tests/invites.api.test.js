@@ -156,6 +156,15 @@ describe('admin invite endpoints — create + list', () => {
     expect(consumed.rsvp_party_size).toBe(2);
     expect(consumed).toHaveProperty('url');
   });
+
+  test('rate-limits admin endpoints after 100 requests', async () => {
+    let last;
+    for (let i = 0; i < 101; i++) {
+      last = await request(app).get('/api/admin/invites').auth(...AUTH);
+    }
+    expect(last.status).toBe(429);
+    expect(last.body.error).toBe('rate_limited');
+  });
 });
 
 describe('admin invite endpoints — release + delete', () => {
