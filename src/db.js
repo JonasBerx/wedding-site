@@ -115,7 +115,10 @@ function initDb(path = 'rsvps.db') {
           consumed_at     TEXT
         )
       `);
-      db.exec('INSERT INTO invite_tokens_new SELECT * FROM invite_tokens');
+      db.exec(`INSERT INTO invite_tokens_new
+        (id, token, event_type, max_party_size, label, status, rsvp_id, created_at, consumed_at)
+        SELECT id, token, event_type, max_party_size, label, status, rsvp_id, created_at, consumed_at
+        FROM invite_tokens`);
       db.exec('DROP TABLE invite_tokens');
       db.exec('ALTER TABLE invite_tokens_new RENAME TO invite_tokens');
       db.exec('COMMIT');
