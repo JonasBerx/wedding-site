@@ -92,11 +92,47 @@ function initDb(path = 'rsvps.db') {
     db.exec('ALTER TABLE registry_items ADD COLUMN unclaimable INTEGER NOT NULL DEFAULT 0');
   }
 
+  // ── invite_tokens event_type migration.
+  // The original CHECK allowed only ('full','ceremony_party'). SQLite cannot
+  // ALTER a CHECK constraint, so when an old table is detected we rebuild it
+  // with the new ('full','ceremony','evening') constraint, preserving all rows.
+  const inviteTokensSql = db.prepare(
+    "SELECT sql FROM sqlite_master WHERE type='table' AND name='invite_tokens'"
+  ).get();
+  if (inviteTokensSql && inviteTokensSql.sql.includes('ceremony_party')) {
+    db.exec('BEGIN');
+    try {
+      db.exec(`
+        CREATE TABLE invite_tokens_new (
+          id              INTEGER PRIMARY KEY AUTOINCREMENT,
+          token           TEXT NOT NULL UNIQUE,
+          event_type      TEXT NOT NULL CHECK (event_type IN ('full','ceremony','evening')),
+          max_party_size  INTEGER NOT NULL CHECK (max_party_size BETWEEN 1 AND 6),
+          label           TEXT,
+          status          TEXT NOT NULL CHECK (status IN ('open','consumed','released')) DEFAULT 'open',
+          rsvp_id         INTEGER REFERENCES rsvps(id) ON DELETE SET NULL,
+          created_at      TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%f','now')),
+          consumed_at     TEXT
+        )
+      `);
+      db.exec(`INSERT INTO invite_tokens_new
+        (id, token, event_type, max_party_size, label, status, rsvp_id, created_at, consumed_at)
+        SELECT id, token, event_type, max_party_size, label, status, rsvp_id, created_at, consumed_at
+        FROM invite_tokens`);
+      db.exec('DROP TABLE invite_tokens');
+      db.exec('ALTER TABLE invite_tokens_new RENAME TO invite_tokens');
+      db.exec('COMMIT');
+    } catch (err) {
+      db.exec('ROLLBACK');
+      throw err;
+    }
+  }
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS invite_tokens (
       id              INTEGER PRIMARY KEY AUTOINCREMENT,
       token           TEXT NOT NULL UNIQUE,
-      event_type      TEXT NOT NULL CHECK (event_type IN ('full','ceremony_party')),
+      event_type      TEXT NOT NULL CHECK (event_type IN ('full','ceremony','evening')),
       max_party_size  INTEGER NOT NULL CHECK (max_party_size BETWEEN 1 AND 6),
       label           TEXT,
       status          TEXT NOT NULL CHECK (status IN ('open','consumed','released')) DEFAULT 'open',

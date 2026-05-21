@@ -23,10 +23,10 @@ describe('GET /api/invite/:token', () => {
 
   test('returns rsvp_email for a consumed invite', async () => {
     const r = db.upsertRsvp({
-      name: 'A', email: 'a@x.com', attending: 1, event_type: 'ceremony_party',
+      name: 'A', email: 'a@x.com', attending: 1, event_type: 'evening',
       attendees: [{ name: 'A' }],
     });
-    const inv = db.createInviteToken({ event_type: 'ceremony_party', max_party_size: 2 });
+    const inv = db.createInviteToken({ event_type: 'evening', max_party_size: 2 });
     db.consumeInviteToken(inv.id, r.id);
 
     const res = await request(app).get(`/api/invite/${inv.token}`);
@@ -90,9 +90,33 @@ describe('admin invite endpoints — create + list', () => {
   test('POST honors PUBLIC_SITE_ORIGIN when set', async () => {
     process.env.PUBLIC_SITE_ORIGIN = 'https://wedding.example.com/';
     const res = await request(app).post('/api/admin/invites').auth(...AUTH).send({
-      event_type: 'ceremony_party', max_party_size: 2,
+      event_type: 'evening', max_party_size: 2,
     });
     expect(res.body.url.startsWith('https://wedding.example.com/rsvp?invite=')).toBe(true);
+  });
+
+  test('POST creates a ceremony invite', async () => {
+    const res = await request(app).post('/api/admin/invites').auth(...AUTH).send({
+      event_type: 'ceremony', max_party_size: 2,
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.event_type).toBe('ceremony');
+  });
+
+  test('POST creates an evening invite', async () => {
+    const res = await request(app).post('/api/admin/invites').auth(...AUTH).send({
+      event_type: 'evening', max_party_size: 3,
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.event_type).toBe('evening');
+  });
+
+  test('POST rejects the retired ceremony_party type', async () => {
+    const res = await request(app).post('/api/admin/invites').auth(...AUTH).send({
+      event_type: 'ceremony_party', max_party_size: 2,
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('invalid_invite_params');
   });
 
   test('POST rejects bad bodies', async () => {
@@ -117,9 +141,9 @@ describe('admin invite endpoints — create + list', () => {
 
   test('GET /api/admin/invites lists invites with linked rsvp data', async () => {
     db.createInviteToken({ event_type: 'full', max_party_size: 2, label: 'L1' });
-    const inv = db.createInviteToken({ event_type: 'ceremony_party', max_party_size: 4 });
+    const inv = db.createInviteToken({ event_type: 'evening', max_party_size: 4 });
     const r = db.upsertRsvp({
-      name: 'A', email: 'a@x.com', attending: 1, event_type: 'ceremony_party',
+      name: 'A', email: 'a@x.com', attending: 1, event_type: 'evening',
       attendees: [{ name: 'A' }, { name: 'B' }],
     });
     db.consumeInviteToken(inv.id, r.id);
@@ -154,9 +178,9 @@ describe('admin invite endpoints — release + delete', () => {
   });
 
   test('release deletes the linked rsvp + attendees and resets the invite', async () => {
-    const inv = db.createInviteToken({ event_type: 'ceremony_party', max_party_size: 2 });
+    const inv = db.createInviteToken({ event_type: 'evening', max_party_size: 2 });
     const r = db.upsertRsvp({
-      name: 'A', email: 'a@x.com', attending: 1, event_type: 'ceremony_party',
+      name: 'A', email: 'a@x.com', attending: 1, event_type: 'evening',
       attendees: [{ name: 'A' }, { name: 'B' }],
     });
     db.consumeInviteToken(inv.id, r.id);
@@ -175,9 +199,9 @@ describe('admin invite endpoints — release + delete', () => {
   test('release returns released_gift when the rsvp had a claim', async () => {
     db.insertRegistryItem({ title: 'Honeymoon fund' });
     const item = db.getAllRegistryItems()[0];
-    const inv = db.createInviteToken({ event_type: 'ceremony_party', max_party_size: 1 });
+    const inv = db.createInviteToken({ event_type: 'evening', max_party_size: 1 });
     const r = db.upsertRsvp({
-      name: 'A', email: 'a@x.com', attending: 1, event_type: 'ceremony_party',
+      name: 'A', email: 'a@x.com', attending: 1, event_type: 'evening',
       attendees: [{ name: 'A' }],
     });
     db.consumeInviteToken(inv.id, r.id);
@@ -212,9 +236,9 @@ describe('admin invite endpoints — release + delete', () => {
 
   test('DELETE removes open tokens, 409 on consumed', async () => {
     const open = db.createInviteToken({ event_type: 'full', max_party_size: 2 });
-    const inv  = db.createInviteToken({ event_type: 'ceremony_party', max_party_size: 2 });
+    const inv  = db.createInviteToken({ event_type: 'evening', max_party_size: 2 });
     const r = db.upsertRsvp({
-      name: 'A', email: 'a@x.com', attending: 1, event_type: 'ceremony_party',
+      name: 'A', email: 'a@x.com', attending: 1, event_type: 'evening',
       attendees: [{ name: 'A' }],
     });
     db.consumeInviteToken(inv.id, r.id);
