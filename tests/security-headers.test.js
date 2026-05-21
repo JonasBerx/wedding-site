@@ -21,6 +21,14 @@ describe('security headers', () => {
     expect(csp).toMatch(/style-src[^;]*fonts\.googleapis\.com/);
   });
 
+  test('img-src allows the venue-photo CDN (static.wixstatic.com)', async () => {
+    // The venue photos in client/src/assets/location/pics.txt are hotlinked
+    // from the Wix static CDN; the CSP must permit that host or they 404 visually.
+    const res = await request(app).get('/api/menu');
+    const csp = res.headers['content-security-policy'];
+    expect(csp).toMatch(/img-src[^;]*static\.wixstatic\.com/);
+  });
+
   test('no CORS header when FRONTEND_URL is unset', async () => {
     const res = await request(app).get('/api/menu').set('Origin', 'https://evil.example.com');
     expect(res.headers['access-control-allow-origin']).toBeUndefined();

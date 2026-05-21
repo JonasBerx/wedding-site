@@ -26,7 +26,8 @@ function createApp(db, opts = {}) {
         scriptSrc: ["'self'"],
         styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
         fontSrc: ["'self'", 'https://fonts.gstatic.com'],
-        imgSrc: ["'self'", 'data:'],
+        // static.wixstatic.com: venue photos hotlinked in client/src/assets/location/pics.txt
+        imgSrc: ["'self'", 'data:', 'https://static.wixstatic.com'],
         mediaSrc: ["'self'"],
         connectSrc: ["'self'"],
         objectSrc: ["'none'"],
