@@ -95,6 +95,30 @@ describe('admin invite endpoints — create + list', () => {
     expect(res.body.url.startsWith('https://wedding.example.com/rsvp?invite=')).toBe(true);
   });
 
+  test('POST creates a ceremony invite', async () => {
+    const res = await request(app).post('/api/admin/invites').auth(...AUTH).send({
+      event_type: 'ceremony', max_party_size: 2,
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.event_type).toBe('ceremony');
+  });
+
+  test('POST creates an evening invite', async () => {
+    const res = await request(app).post('/api/admin/invites').auth(...AUTH).send({
+      event_type: 'evening', max_party_size: 3,
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.event_type).toBe('evening');
+  });
+
+  test('POST rejects the retired ceremony_party type', async () => {
+    const res = await request(app).post('/api/admin/invites').auth(...AUTH).send({
+      event_type: 'ceremony_party', max_party_size: 2,
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('invalid_invite_params');
+  });
+
   test('POST rejects bad bodies', async () => {
     const bad = [
       { event_type: 'wrong', max_party_size: 2 },

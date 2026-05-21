@@ -11,7 +11,7 @@ function createAdminRouter(db) {
 
   router.post('/invites', requireAuth, (req, res) => {
     const { event_type, max_party_size, label } = req.body || {};
-    if (event_type !== 'full' && event_type !== 'ceremony_party') {
+    if (!['full', 'ceremony', 'evening'].includes(event_type)) {
       return res.status(400).json({ error: 'invalid_invite_params' });
     }
     if (!Number.isInteger(max_party_size) || max_party_size < 1 || max_party_size > 6) {
