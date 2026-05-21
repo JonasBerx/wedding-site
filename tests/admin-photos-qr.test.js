@@ -4,6 +4,12 @@ const { createApp } = require('../src/app');
 
 const AUTH = 'Basic ' + Buffer.from('admin:secret').toString('base64');
 
+// PNG QR generation is a CPU-heavy pure-JS raster encode. In production it
+// completes in ~90ms, but inside the Jest VM it runs ~50x slower (~5s for the
+// 1024px default), which flakes against Jest's 5000ms default timeout under
+// parallel-suite CPU contention. Give the PNG tests a generous explicit budget.
+const QR_PNG_TIMEOUT_MS = 20000;
+
 describe('admin QR', () => {
   let app, db;
   beforeAll(() => {
@@ -41,12 +47,12 @@ describe('admin QR', () => {
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toMatch(/image\/png/);
     expect(res.body.slice(0, 4).toString('hex')).toBe('89504e47');
-  });
+  }, QR_PNG_TIMEOUT_MS);
 
   test('GET qr.png supports size param within bounds', async () => {
     const res = await request(app).get('/api/admin/photos/qr.png?size=512').set('Authorization', AUTH);
     expect(res.status).toBe(200);
-  });
+  }, QR_PNG_TIMEOUT_MS);
 
   test('exposes the target URL via GET qr-target for the admin UI', async () => {
     const res = await request(app).get('/api/admin/photos/qr-target').set('Authorization', AUTH);
