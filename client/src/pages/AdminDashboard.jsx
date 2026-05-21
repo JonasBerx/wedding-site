@@ -571,7 +571,8 @@ export default function AdminDashboard() {
                         <td style={tdStyle}>{r.attending ? 'Yes' : 'No'}</td>
                         <td style={tdStyle}>
                           {r.event_type === 'full' ? 'Full day'
-                            : r.event_type === 'ceremony_party' ? 'Ceremony / Evening'
+                            : r.event_type === 'ceremony' ? 'Ceremony only'
+                            : r.event_type === 'evening' ? 'Evening only'
                             : '—'}
                         </td>
                         <td style={tdStyle}>{(r.attendees || []).length}</td>
@@ -827,7 +828,8 @@ export default function AdminDashboard() {
                   style={inputStyle}
                 >
                   <option value="full">Full day</option>
-                  <option value="ceremony_party">Ceremony &amp; evening</option>
+                  <option value="ceremony">Ceremony only</option>
+                  <option value="evening">Evening only</option>
                 </select>
               </div>
               <div style={{ flex: '0 0 100px' }}>
@@ -868,7 +870,7 @@ export default function AdminDashboard() {
                   {invites.map(inv => (
                     <tr key={inv.id}>
                       <td style={tdStyle}>{inv.label || '—'}</td>
-                      <td style={tdStyle}>{inv.event_type === 'full' ? 'Full day' : 'Ceremony / Evening'}</td>
+                      <td style={tdStyle}>{inv.event_type === 'full' ? 'Full day' : inv.event_type === 'ceremony' ? 'Ceremony only' : 'Evening only'}</td>
                       <td style={tdStyle}>{inv.max_party_size}</td>
                       <td style={tdStyle}>{inv.status}</td>
                       <td style={tdStyle}>
