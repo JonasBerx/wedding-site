@@ -112,8 +112,8 @@ function createRsvpRouter(db) {
     let dbAttendees = [];
 
     if (attending) {
-      if (effectiveEventType !== 'full' && effectiveEventType !== 'ceremony_party') {
-        return res.status(400).json({ error: "event_type must be 'full' or 'ceremony_party'" });
+      if (!['full', 'ceremony', 'evening'].includes(effectiveEventType)) {
+        return res.status(400).json({ error: "event_type must be 'full', 'ceremony', or 'evening'" });
       }
       dbEventType = effectiveEventType;
       if (inviteCap != null && Array.isArray(attendees) && attendees.length > inviteCap) {
@@ -134,7 +134,9 @@ function createRsvpRouter(db) {
         event_type: dbEventType,
         dietary_restrictions: typeof dietary_restrictions === 'string' && dietary_restrictions.trim()
           ? dietary_restrictions.trim() : null,
-        song: typeof song === 'string' && song.trim() ? song.trim() : null,
+        song: dbEventType === 'ceremony'
+          ? null
+          : (typeof song === 'string' && song.trim() ? song.trim() : null),
         attendees: dbAttendees,
       }, consumeInviteId ? { consumeInviteId } : {});
     } catch (err) {

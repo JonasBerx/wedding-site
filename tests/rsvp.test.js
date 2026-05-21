@@ -72,6 +72,32 @@ describe('POST /api/rsvp', () => {
     expect(stored.attendees[0].main_course_id).toBeNull();
   });
 
+  test('ceremony invite stores song as null even when the body includes one', async () => {
+    const inv = db.createInviteToken({ event_type: 'ceremony', max_party_size: 4 });
+    const res = await request(app).post('/api/rsvp').send({
+      name: 'Cara', email: 'cara@x.com', attending: true,
+      event_type: 'ceremony', token: inv.token, song: 'Into the Mystic',
+      attendees: [{ name: 'Cara' }],
+    });
+    expect(res.status).toBe(201);
+    const stored = db.getRsvpByEmail('cara@x.com');
+    expect(stored.event_type).toBe('ceremony');
+    expect(stored.song).toBeNull();
+  });
+
+  test('evening invite keeps the submitted song', async () => {
+    const inv = db.createInviteToken({ event_type: 'evening', max_party_size: 4 });
+    const res = await request(app).post('/api/rsvp').send({
+      name: 'Evan', email: 'evan@x.com', attending: true,
+      event_type: 'evening', token: inv.token, song: 'September',
+      attendees: [{ name: 'Evan' }],
+    });
+    expect(res.status).toBe(201);
+    const stored = db.getRsvpByEmail('evan@x.com');
+    expect(stored.event_type).toBe('evening');
+    expect(stored.song).toBe('September');
+  });
+
   test('not attending stores null for both course ids', async () => {
     const res = await request(app).post('/api/rsvp').send({
       name: 'C', email: 'c@x.com', attending: false,
