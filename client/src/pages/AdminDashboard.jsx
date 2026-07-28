@@ -556,7 +556,7 @@ export default function AdminDashboard() {
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr>
-                    {['ID','Name','Email','Attending','Event','# Attendees','Party note','Submitted'].map(h => (
+                    {['ID','Name','Email','Attending','Event','# Attendees','Party note','Song','Submitted'].map(h => (
                       <th key={h} style={thStyle}>{h}</th>
                     ))}
                   </tr>
@@ -577,11 +577,12 @@ export default function AdminDashboard() {
                         </td>
                         <td style={tdStyle}>{(r.attendees || []).length}</td>
                         <td style={tdStyle}>{r.dietary_restrictions || '—'}</td>
+                        <td style={tdStyle}>{r.song || '—'}</td>
                         <td style={{ ...tdStyle, color: INK_SOFT }}>{r.submitted_at}</td>
                       </tr>
                       {(r.attendees || []).length > 0 && (
                         <tr>
-                          <td colSpan={8} style={{ ...tdStyle, background: PAPER_DARK, paddingLeft: 36 }}>
+                          <td colSpan={9} style={{ ...tdStyle, background: PAPER_DARK, paddingLeft: 36 }}>
                             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                               <thead>
                                 <tr>
