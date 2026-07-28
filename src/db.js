@@ -520,6 +520,11 @@ function initDb(path = 'rsvps.db') {
       }));
     },
 
+    // Seats are freed by attendee-row deletion: cancelling an RSVP reconciles the
+    // party to zero rows and the FK cascade removes the assignments, and the same
+    // holds when an invite is released. rsvps.event_type is locked at the route
+    // (src/routes/rsvp.js), so a guest cannot downgrade full -> evening/ceremony
+    // and strand a seat here.
     getUnseatedAttendees() {
       return db.prepare(`
         SELECT ra.id AS rsvp_attendee_id, ra.name AS name, r.name AS party_name
@@ -532,6 +537,23 @@ function initDb(path = 'rsvps.db') {
           )
         ORDER BY r.name, ra.position
       `).all();
+    },
+
+    // ── app_settings
+    getSetting(key) {
+      const row = db.prepare('SELECT value FROM app_settings WHERE key = :key').get({ key });
+      return row ? row.value : null;
+    },
+
+    setSetting(key, value) {
+      return db.prepare(`
+        INSERT INTO app_settings (key, value) VALUES (:key, :value)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+      `).run({ key, value: String(value) });
+    },
+
+    isSeatingPublished() {
+      return this.getSetting('seating_published') === '1';
     },
 
     // ── registry_items

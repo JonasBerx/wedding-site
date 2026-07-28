@@ -138,7 +138,7 @@ describe('seating assignment methods', () => {
     const t2 = db.createSeatingTable({ table_number: 2 });
     const [alice] = seatParty('a@x.com', ['Alice']);
     db.createSeatingAssignment({ table_id: t1.id, rsvp_attendee_id: alice.id });
-    expect(() => db.createSeatingAssignment({ table_id: t2.id, rsvp_attendee_id: alice.id })).toThrow();
+    expect(() => db.createSeatingAssignment({ table_id: t2.id, rsvp_attendee_id: alice.id })).toThrow(/UNIQUE/);
   });
 
   test('deleting a table removes its assignments', () => {
@@ -174,5 +174,75 @@ describe('seating assignment methods', () => {
     const a = db.createSeatingAssignment({ table_id: t.id, rsvp_attendee_id: alice.id });
     expect(db.deleteSeatingAssignment(a.id).changes).toBe(1);
     expect(db.getUnseatedAttendees()).toHaveLength(1);
+  });
+});
+
+describe('app settings and seat durability', () => {
+  let db, f, m;
+  beforeEach(() => {
+    db = initDb(':memory:');
+    f = db.insertMenuItem({ course: 'first', name: 'Tomato' });
+    m = db.insertMenuItem({ course: 'main',  name: 'Lamb' });
+  });
+  afterEach(() => { db.close(); });
+
+  test('seating is unpublished when the key is absent', () => {
+    expect(db.getSetting('seating_published')).toBeNull();
+    expect(db.isSeatingPublished()).toBe(false);
+  });
+
+  test('setSetting writes and overwrites', () => {
+    db.setSetting('seating_published', '1');
+    expect(db.isSeatingPublished()).toBe(true);
+    db.setSetting('seating_published', '0');
+    expect(db.isSeatingPublished()).toBe(false);
+  });
+
+  // The reason Task 1 exists. If this breaks, guests lose their seats silently.
+  test('a seat survives the guest editing their RSVP', () => {
+    const payload = (names) => ({
+      name: names[0], email: 'a@x.com', attending: 1, event_type: 'full',
+      attendees: names.map(n => ({
+        name: n,
+        first_course_id: f.lastInsertRowid,
+        main_course_id: m.lastInsertRowid,
+      })),
+    });
+    db.upsertRsvp(payload(['Alice', 'Bob']));
+    const rsvp = db.getRsvpByEmail('a@x.com');
+    const rows = db._rawAll('SELECT id FROM rsvp_attendees WHERE rsvp_id = ? ORDER BY position', rsvp.id);
+
+    const t = db.createSeatingTable({ table_number: 1, name: 'Olijf' });
+    db.createSeatingAssignment({ table_id: t.id, rsvp_attendee_id: rows[0].id });
+    db.createSeatingAssignment({ table_id: t.id, rsvp_attendee_id: rows[1].id });
+
+    // Guest edits their RSVP — corrects a name.
+    db.upsertRsvp(payload(['Alice', 'Bobby']));
+
+    const tables = db.getSeatingTablesWithAssignments();
+    expect(tables[0].assignments.map(a => a.display_name)).toEqual(['Alice', 'Bobby']);
+    expect(db.getUnseatedAttendees()).toHaveLength(0);
+  });
+
+  test('a shrinking party frees the seat it no longer needs', () => {
+    const payload = (names) => ({
+      name: names[0], email: 'a@x.com', attending: 1, event_type: 'full',
+      attendees: names.map(n => ({
+        name: n,
+        first_course_id: f.lastInsertRowid,
+        main_course_id: m.lastInsertRowid,
+      })),
+    });
+    db.upsertRsvp(payload(['Alice', 'Bob']));
+    const rsvp = db.getRsvpByEmail('a@x.com');
+    const rows = db._rawAll('SELECT id FROM rsvp_attendees WHERE rsvp_id = ? ORDER BY position', rsvp.id);
+    const t = db.createSeatingTable({ table_number: 1 });
+    db.createSeatingAssignment({ table_id: t.id, rsvp_attendee_id: rows[0].id });
+    db.createSeatingAssignment({ table_id: t.id, rsvp_attendee_id: rows[1].id });
+
+    db.upsertRsvp(payload(['Alice']));
+
+    const tables = db.getSeatingTablesWithAssignments();
+    expect(tables[0].assignments.map(a => a.display_name)).toEqual(['Alice']);
   });
 });
