@@ -4,6 +4,7 @@ import { VariationB } from './WeddingSite';
 import RegistryPage from './pages/RegistryPage';
 import AdminDashboard from './pages/AdminDashboard';
 import PhotosPage from './pages/PhotosPage';
+import SeatingPage from './pages/SeatingPage';
 import { PaletteShell, usePaletteMode } from './PaletteShell';
 
 function HomePage() {
@@ -19,6 +20,7 @@ export default function App() {
         <Route path="/rsvp" element={<HomePage />} />
         <Route path="/registry" element={<RegistryPage />} />
         <Route path="/photos" element={<PhotosPage />} />
+        <Route path="/seating" element={<SeatingPage />} />
         <Route path="/admin" element={<AdminDashboard />} />
       </Routes>
     </PaletteShell>
