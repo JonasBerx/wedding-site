@@ -257,7 +257,7 @@ function initDb(path = 'rsvps.db') {
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS app_settings (
-      key   TEXT PRIMARY KEY,
+      key   TEXT PRIMARY KEY NOT NULL,
       value TEXT NOT NULL
     )
   `);
