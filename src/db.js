@@ -458,6 +458,8 @@ function initDb(path = 'rsvps.db') {
       return db.prepare('SELECT * FROM seating_tables WHERE id = :id').get({ id }) || null;
     },
 
+    // Full replace: omitting `name` clears it. Callers doing partial updates
+    // must read the current row first.
     updateSeatingTable(id, { table_number, name = null }) {
       return db.prepare(
         'UPDATE seating_tables SET table_number = :table_number, name = :name WHERE id = :id'
@@ -466,6 +468,70 @@ function initDb(path = 'rsvps.db') {
 
     deleteSeatingTable(id) {
       return db.prepare('DELETE FROM seating_tables WHERE id = :id').run({ id });
+    },
+
+    // ── seating_assignments
+    createSeatingAssignment({ table_id, rsvp_attendee_id = null, guest_name = null }) {
+      const next = db.prepare(
+        'SELECT COALESCE(MAX(position), -1) + 1 AS next_pos FROM seating_assignments WHERE table_id = :table_id'
+      ).get({ table_id }).next_pos;
+      const result = db.prepare(`
+        INSERT INTO seating_assignments (table_id, rsvp_attendee_id, guest_name, position)
+        VALUES (:table_id, :rsvp_attendee_id, :guest_name, :position)
+      `).run({ table_id, rsvp_attendee_id, guest_name, position: next });
+      return { id: Number(result.lastInsertRowid) };
+    },
+
+    deleteSeatingAssignment(id) {
+      return db.prepare('DELETE FROM seating_assignments WHERE id = :id').run({ id });
+    },
+
+    getSeatingTablesWithAssignments() {
+      const tables = db.prepare('SELECT * FROM seating_tables ORDER BY table_number ASC').all();
+      if (tables.length === 0) return [];
+      const rows = db.prepare(`
+        SELECT sa.id, sa.table_id, sa.position, sa.rsvp_attendee_id,
+               COALESCE(sa.guest_name, ra.name) AS display_name
+        FROM seating_assignments sa
+        LEFT JOIN rsvp_attendees ra ON ra.id = sa.rsvp_attendee_id
+        ORDER BY sa.table_id, sa.position
+      `).all();
+      const grouped = new Map(tables.map(t => [t.id, []]));
+      for (const r of rows) {
+        if (!grouped.has(r.table_id)) continue;
+        grouped.get(r.table_id).push({
+          id: r.id,
+          display_name: r.display_name,
+          rsvp_attendee_id: r.rsvp_attendee_id,
+          position: r.position,
+        });
+      }
+      // Alphabetical for guests scanning without a search box; position breaks ties.
+      for (const list of grouped.values()) {
+        list.sort((a, b) =>
+          a.display_name.localeCompare(b.display_name, 'nl', { sensitivity: 'base' })
+          || a.position - b.position);
+      }
+      return tables.map(t => ({
+        id: t.id,
+        table_number: t.table_number,
+        name: t.name,
+        assignments: grouped.get(t.id),
+      }));
+    },
+
+    getUnseatedAttendees() {
+      return db.prepare(`
+        SELECT ra.id AS rsvp_attendee_id, ra.name AS name, r.name AS party_name
+        FROM rsvp_attendees ra
+        JOIN rsvps r ON r.id = ra.rsvp_id
+        WHERE r.attending = 1
+          AND r.event_type = 'full'
+          AND NOT EXISTS (
+            SELECT 1 FROM seating_assignments sa WHERE sa.rsvp_attendee_id = ra.id
+          )
+        ORDER BY r.name, ra.position
+      `).all();
     },
 
     // ── registry_items

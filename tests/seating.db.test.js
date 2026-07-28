@@ -96,3 +96,83 @@ describe('seating table methods', () => {
     expect(db.getSeatingTableById(t.id)).toBeNull();
   });
 });
+
+describe('seating assignment methods', () => {
+  let db, f, m;
+
+  const seatParty = (email, names, event_type = 'full') => {
+    db.upsertRsvp({
+      name: names[0], email, attending: 1, event_type,
+      attendees: names.map(n => ({
+        name: n,
+        first_course_id: event_type === 'full' ? f.lastInsertRowid : null,
+        main_course_id:  event_type === 'full' ? m.lastInsertRowid : null,
+      })),
+    });
+    const rsvp = db.getRsvpByEmail(email);
+    return db._rawAll('SELECT id, name FROM rsvp_attendees WHERE rsvp_id = ? ORDER BY position', rsvp.id);
+  };
+
+  beforeEach(() => {
+    db = initDb(':memory:');
+    f = db.insertMenuItem({ course: 'first', name: 'Tomato' });
+    m = db.insertMenuItem({ course: 'main',  name: 'Lamb' });
+  });
+  afterEach(() => { db.close(); });
+
+  test('seats a linked attendee and a manual guest, sorted alphabetically', () => {
+    const t = db.createSeatingTable({ table_number: 1, name: 'Olijf' });
+    const [alice] = seatParty('a@x.com', ['Zoe']);
+    db.createSeatingAssignment({ table_id: t.id, rsvp_attendee_id: alice.id });
+    db.createSeatingAssignment({ table_id: t.id, guest_name: 'Oma Julia' });
+
+    const tables = db.getSeatingTablesWithAssignments();
+    expect(tables).toHaveLength(1);
+    expect(tables[0].assignments.map(a => a.display_name)).toEqual(['Oma Julia', 'Zoe']);
+    expect(tables[0].assignments[1].rsvp_attendee_id).toBe(alice.id);
+    expect(tables[0].assignments[0].rsvp_attendee_id).toBeNull();
+  });
+
+  test('refuses to seat the same attendee twice', () => {
+    const t1 = db.createSeatingTable({ table_number: 1 });
+    const t2 = db.createSeatingTable({ table_number: 2 });
+    const [alice] = seatParty('a@x.com', ['Alice']);
+    db.createSeatingAssignment({ table_id: t1.id, rsvp_attendee_id: alice.id });
+    expect(() => db.createSeatingAssignment({ table_id: t2.id, rsvp_attendee_id: alice.id })).toThrow();
+  });
+
+  test('deleting a table removes its assignments', () => {
+    const t = db.createSeatingTable({ table_number: 1 });
+    db.createSeatingAssignment({ table_id: t.id, guest_name: 'Oma Julia' });
+    db.deleteSeatingTable(t.id);
+    expect(db._rawAll('SELECT id FROM seating_assignments')).toHaveLength(0);
+  });
+
+  test('unseated lists only attending full-day attendees', () => {
+    seatParty('full@x.com',     ['Alice', 'Bob']);
+    seatParty('evening@x.com',  ['Eve'],   'evening');
+    seatParty('ceremony@x.com', ['Cy'],    'ceremony');
+    db.upsertRsvp({ name: 'No', email: 'no@x.com', attending: 0, attendees: [] });
+
+    const unseated = db.getUnseatedAttendees();
+    expect(unseated.map(u => u.name).sort()).toEqual(['Alice', 'Bob']);
+    expect(unseated[0].party_name).toBe('Alice');
+  });
+
+  test('a seated attendee drops out of the unseated list', () => {
+    const t = db.createSeatingTable({ table_number: 1 });
+    const [alice, bob] = seatParty('a@x.com', ['Alice', 'Bob']);
+    db.createSeatingAssignment({ table_id: t.id, rsvp_attendee_id: alice.id });
+
+    const unseated = db.getUnseatedAttendees();
+    expect(unseated.map(u => u.rsvp_attendee_id)).toEqual([bob.id]);
+  });
+
+  test('deleting an assignment returns the guest to unseated', () => {
+    const t = db.createSeatingTable({ table_number: 1 });
+    const [alice] = seatParty('a@x.com', ['Alice']);
+    const a = db.createSeatingAssignment({ table_id: t.id, rsvp_attendee_id: alice.id });
+    expect(db.deleteSeatingAssignment(a.id).changes).toBe(1);
+    expect(db.getUnseatedAttendees()).toHaveLength(1);
+  });
+});
