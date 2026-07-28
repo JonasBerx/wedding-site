@@ -5,6 +5,65 @@ function _generateInviteToken() {
   return crypto.randomBytes(16).toString('base64url');
 }
 
+// Reconcile a party's attendee rows in place. rsvp_attendees.id is referenced
+// by the seating feature, so a guest editing their RSVP must not churn ids:
+// re-inserting would cascade their seat away silently. Match each submitted
+// person to their existing row by name first so that a drop-out, a reorder, or
+// a corrected typo all keep the right person on the right row; leftover rows
+// absorb renames, and anything still unclaimed belonged to someone who is no
+// longer coming.
+function reconcileAttendees(db, rsvpId, desired) {
+  const existing = db.prepare(
+    'SELECT id, position, name FROM rsvp_attendees WHERE rsvp_id = :id ORDER BY position'
+  ).all({ id: rsvpId });
+
+  const available = existing.slice();
+  const claimedIdFor = new Array(desired.length).fill(null);
+  const norm = (s) => String(s ?? '').trim().toLowerCase();
+
+  // Pass 1: the same person, wherever they moved to in the list.
+  desired.forEach((a, idx) => {
+    const at = available.findIndex(r => norm(r.name) === norm(a.name));
+    if (at !== -1) claimedIdFor[idx] = available.splice(at, 1)[0].id;
+  });
+
+  // Pass 2: leftover rows absorb renames and typo corrections, in list order.
+  desired.forEach((a, idx) => {
+    if (claimedIdFor[idx] == null && available.length > 0) {
+      claimedIdFor[idx] = available.shift().id;
+    }
+  });
+
+  const upd = db.prepare(`
+    UPDATE rsvp_attendees SET
+      position = :position,
+      name = :name,
+      first_course_id = :first_course_id,
+      main_course_id = :main_course_id,
+      dietary_restrictions = :dietary_restrictions
+    WHERE id = :id
+  `);
+  const ins = db.prepare(`
+    INSERT INTO rsvp_attendees (rsvp_id, position, name, first_course_id, main_course_id, dietary_restrictions)
+    VALUES (:rsvp_id, :position, :name, :first_course_id, :main_course_id, :dietary_restrictions)
+  `);
+
+  desired.forEach((a, idx) => {
+    const fields = {
+      position: idx + 1,
+      name: a.name,
+      first_course_id: a.first_course_id ?? null,
+      main_course_id:  a.main_course_id  ?? null,
+      dietary_restrictions: a.dietary_restrictions ?? null,
+    };
+    if (claimedIdFor[idx] != null) upd.run({ ...fields, id: claimedIdFor[idx] });
+    else ins.run({ ...fields, rsvp_id: rsvpId });
+  });
+
+  const del = db.prepare('DELETE FROM rsvp_attendees WHERE id = :id');
+  for (const row of available) del.run({ id: row.id });
+}
+
 function initDb(path = 'rsvps.db') {
   const db = new DatabaseSync(path);
   db.exec('PRAGMA foreign_keys = ON');
@@ -198,47 +257,7 @@ function initDb(path = 'rsvps.db') {
           outcome = { id: result.lastInsertRowid, was_update: false, prev_attending: null };
         }
 
-        // Reconcile attendees by position instead of delete-and-reinsert, so
-        // rsvp_attendees.id stays stable across edits. seating_assignments
-        // references those ids; re-inserting would cascade seats away silently.
-        const desired = (attending === 1 && Array.isArray(attendees)) ? attendees : [];
-
-        const existingRows = db.prepare(
-          'SELECT id, position FROM rsvp_attendees WHERE rsvp_id = :id ORDER BY position'
-        ).all({ id: outcome.id });
-        const idByPosition = new Map(existingRows.map(r => [r.position, r.id]));
-
-        const updAttendee = db.prepare(`
-          UPDATE rsvp_attendees SET
-            name = :name,
-            first_course_id = :first_course_id,
-            main_course_id = :main_course_id,
-            dietary_restrictions = :dietary_restrictions
-          WHERE id = :id
-        `);
-        const insAttendee = db.prepare(`
-          INSERT INTO rsvp_attendees (rsvp_id, position, name, first_course_id, main_course_id, dietary_restrictions)
-          VALUES (:rsvp_id, :position, :name, :first_course_id, :main_course_id, :dietary_restrictions)
-        `);
-
-        desired.forEach((a, idx) => {
-          const position = idx + 1;
-          const fields = {
-            name: a.name,
-            first_course_id: a.first_course_id ?? null,
-            main_course_id:  a.main_course_id  ?? null,
-            dietary_restrictions: a.dietary_restrictions ?? null,
-          };
-          const existingId = idByPosition.get(position);
-          if (existingId != null) {
-            updAttendee.run({ ...fields, id: existingId });
-          } else {
-            insAttendee.run({ ...fields, rsvp_id: outcome.id, position });
-          }
-        });
-
-        db.prepare('DELETE FROM rsvp_attendees WHERE rsvp_id = :id AND position > :keep')
-          .run({ id: outcome.id, keep: desired.length });
+        reconcileAttendees(db, outcome.id, (attending === 1 && Array.isArray(attendees)) ? attendees : []);
 
         let invite_consumed = false;
         if (consumeInviteId != null) {
@@ -623,8 +642,8 @@ function initDb(path = 'rsvps.db') {
       }
       return db.prepare(`PRAGMA table_info(${name})`).all();
     },
-    // Test-only: run an arbitrary read query. Do not use in production code.
-    rawAll(sql, ...params) {
+    // Test-only: run an arbitrary query. Do not use in production code.
+    _rawAll(sql, ...params) {
       return db.prepare(sql).all(...params);
     },
     // Test-only: raw DatabaseSync handle. Do not use in production code.

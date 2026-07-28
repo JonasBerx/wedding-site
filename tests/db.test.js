@@ -215,7 +215,7 @@ describe('upsertRsvp with attendees', () => {
     expect(rsvp.attendees[1]).toMatchObject({ position: 2, name: 'Bob' });
   });
 
-  test('replaces attendees on update (old rows gone, new positions)', () => {
+  test('grows a party, appending new positions', () => {
     const { fid, mid } = seedMenu();
     db.upsertRsvp({
       name: 'Alice', email: 'a@x.com', attending: 1, event_type: 'full',
@@ -384,54 +384,89 @@ describe('getMealCounts', () => {
 });
 
 describe('upsertRsvp attendee identity', () => {
-  test('attendee ids survive an RSVP edit', () => {
-    const db = initDb(':memory:');
-    const f = db.insertMenuItem({ course: 'first', name: 'Tomato' });
-    const m = db.insertMenuItem({ course: 'main',  name: 'Lamb' });
-    const payload = (names) => ({
-      name: names[0], email: 'a@x.com', attending: 1, event_type: 'full',
-      attendees: names.map(n => ({
-        name: n,
-        first_course_id: f.lastInsertRowid,
-        main_course_id: m.lastInsertRowid,
-      })),
+  // The seating feature will reference rsvp_attendees.id, so these tests pin
+  // down which row each submitted person lands on across an edit.
+  let db;
+  let fid;
+  let mid;
+  const EMAIL = 'a@x.com';
+
+  beforeEach(() => {
+    db = initDb(':memory:');
+    fid = db.insertMenuItem({ course: 'first', name: 'Tomato' }).lastInsertRowid;
+    mid = db.insertMenuItem({ course: 'main',  name: 'Lamb'   }).lastInsertRowid;
+  });
+  afterEach(() => { db.close(); });
+
+  function submit(names) {
+    db.upsertRsvp({
+      name: names[0], email: EMAIL, attending: 1, event_type: 'full',
+      attendees: names.map(n => ({ name: n, first_course_id: fid, main_course_id: mid })),
     });
+  }
 
-    db.upsertRsvp(payload(['Alice', 'Bob']));
-    const before = db.getRsvpByEmail('a@x.com');
-    const idsBefore = db.rawAll('SELECT id FROM rsvp_attendees WHERE rsvp_id = ? ORDER BY position', before.id);
+  // Attendee rows for the party, in seating order.
+  function rows() {
+    const rsvp = db.getRsvpByEmail(EMAIL);
+    return db._rawAll(
+      'SELECT id, name, position FROM rsvp_attendees WHERE rsvp_id = ? ORDER BY position',
+      rsvp.id,
+    );
+  }
 
-    db.upsertRsvp(payload(['Alice', 'Bobby']));
-    const idsAfter = db.rawAll('SELECT id FROM rsvp_attendees WHERE rsvp_id = ? ORDER BY position', before.id);
+  test('attendee ids survive an RSVP edit', () => {
+    submit(['Alice', 'Bob']);
+    const idsBefore = rows().map(r => r.id);
 
-    expect(idsAfter.map(r => r.id)).toEqual(idsBefore.map(r => r.id));
-    const after = db.getRsvpByEmail('a@x.com');
-    expect(after.attendees.map(a => a.name)).toEqual(['Alice', 'Bobby']);
-    db.close();
+    submit(['Alice', 'Bobby']);
+
+    expect(rows().map(r => r.id)).toEqual(idsBefore);
+    expect(rows().map(r => r.name)).toEqual(['Alice', 'Bobby']);
   });
 
   test('shrinking a party deletes only the surplus rows', () => {
-    const db = initDb(':memory:');
-    const f = db.insertMenuItem({ course: 'first', name: 'Tomato' });
-    const m = db.insertMenuItem({ course: 'main',  name: 'Lamb' });
-    const payload = (names) => ({
-      name: names[0], email: 'b@x.com', attending: 1, event_type: 'full',
-      attendees: names.map(n => ({
-        name: n,
-        first_course_id: f.lastInsertRowid,
-        main_course_id: m.lastInsertRowid,
-      })),
-    });
+    submit(['Alice', 'Bob', 'Cara']);
+    const firstId = rows()[0].id;
 
-    db.upsertRsvp(payload(['Alice', 'Bob', 'Cara']));
-    const rsvp = db.getRsvpByEmail('b@x.com');
-    const firstId = db.rawAll('SELECT id FROM rsvp_attendees WHERE rsvp_id = ? ORDER BY position', rsvp.id)[0].id;
+    submit(['Alice']);
 
-    db.upsertRsvp(payload(['Alice']));
-    const rows = db.rawAll('SELECT id, name FROM rsvp_attendees WHERE rsvp_id = ? ORDER BY position', rsvp.id);
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0].id).toBe(firstId);
+  });
 
-    expect(rows).toHaveLength(1);
-    expect(rows[0].id).toBe(firstId);
-    db.close();
+  test('a guest dropping out leaves the survivor on their own row', () => {
+    submit(['Alice', 'Bob']);
+    const [alice, bob] = rows();
+
+    submit(['Bob']);
+
+    // Bob keeps his own id — he must not inherit Alice's row (and her seat).
+    expect(rows()).toEqual([{ id: bob.id, name: 'Bob', position: 1 }]);
+    expect(rows().some(r => r.id === alice.id)).toBe(false);
+  });
+
+  test('reordering a party keeps both ids and swaps positions', () => {
+    submit(['Alice', 'Bob']);
+    const [alice, bob] = rows();
+
+    submit(['Bob', 'Alice']);
+
+    expect(rows()).toEqual([
+      { id: bob.id,   name: 'Bob',   position: 1 },
+      { id: alice.id, name: 'Alice', position: 2 },
+    ]);
+  });
+
+  test('growing a party keeps existing ids and appends the newcomer', () => {
+    submit(['Alice']);
+    const aliceId = rows()[0].id;
+
+    submit(['Alice', 'Bob']);
+
+    const after = rows();
+    expect(after).toHaveLength(2);
+    expect(after[0]).toEqual({ id: aliceId, name: 'Alice', position: 1 });
+    expect(after[1]).toMatchObject({ name: 'Bob', position: 2 });
+    expect(after[1].id).not.toBe(aliceId);
   });
 });
