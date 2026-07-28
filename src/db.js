@@ -230,6 +230,38 @@ function initDb(path = 'rsvps.db') {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_guest_photos_visible_uploaded
             ON guest_photos (hidden, uploaded_at DESC, id DESC)`);
 
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS seating_tables (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      table_number INTEGER NOT NULL UNIQUE,
+      name         TEXT,
+      created_at   TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%f','now'))
+    )
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS seating_assignments (
+      id               INTEGER PRIMARY KEY AUTOINCREMENT,
+      table_id         INTEGER NOT NULL REFERENCES seating_tables(id) ON DELETE CASCADE,
+      rsvp_attendee_id INTEGER REFERENCES rsvp_attendees(id) ON DELETE CASCADE,
+      guest_name       TEXT,
+      position         INTEGER NOT NULL DEFAULT 0,
+      CHECK ((rsvp_attendee_id IS NULL) <> (guest_name IS NULL))
+    )
+  `);
+
+  db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS seating_assignments_attendee
+            ON seating_assignments(rsvp_attendee_id) WHERE rsvp_attendee_id IS NOT NULL`);
+  db.exec(`CREATE INDEX IF NOT EXISTS seating_assignments_table
+            ON seating_assignments(table_id)`);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key   TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    )
+  `);
+
   return {
     insertRsvp({ name, email, attending, event_type = null, dietary_restrictions = null }) {
       return db.prepare(`
@@ -653,6 +685,10 @@ function initDb(path = 'rsvps.db') {
     // Test-only: run an arbitrary query. Do not use in production code.
     _rawAll(sql, ...params) {
       return db.prepare(sql).all(...params);
+    },
+    // Test-only: run an arbitrary statement. Do not use in production code.
+    _rawRun(sql, ...params) {
+      return db.prepare(sql).run(...params);
     },
     // Test-only: raw DatabaseSync handle. Do not use in production code.
     _raw: db,
