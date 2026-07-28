@@ -2,6 +2,7 @@ import React from 'react';
 import { Sprig } from '../botanicals';
 import Toast from '../components/Toast';
 import ConfirmModal from '../components/ConfirmModal';
+import SeatingAdminTab from '../components/SeatingAdminTab';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, useSortable, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -253,6 +254,8 @@ export default function AdminDashboard() {
   const [copyOk, setCopyOk] = React.useState(null);
   const [confirmReleaseId, setConfirmReleaseId] = React.useState(null);
   const [confirmDeleteId, setConfirmDeleteId] = React.useState(null);
+  const [pendingTableDelete, setPendingTableDelete] = React.useState(null);
+  const [seatingNonce, setSeatingNonce] = React.useState(0);
 
   async function apiFetch(path, creds, options = {}) {
     return fetch(path, {
@@ -532,6 +535,7 @@ export default function AdminDashboard() {
             { key: 'registry', label: `REGISTRY · ${registry.length}` },
             { key: 'menu',     label: `MENU · ${menu.length}` },
             { key: 'invites',  label: `INVITES · ${invites.length}` },
+            { key: 'seating',  label: 'SEATING' },
             { key: 'photos',   label: 'PHOTOS' },
           ].map(({ key, label }) => (
             <button
@@ -912,6 +916,15 @@ export default function AdminDashboard() {
           </>
         )}
 
+        {tab === 'seating' && (
+          <SeatingAdminTab
+            key={seatingNonce}
+            apiFetch={apiFetch}
+            onToast={setToast}
+            onConfirmDeleteTable={setPendingTableDelete}
+          />
+        )}
+
         {tab === 'photos' && (
           <GuestPhotosAdminTab apiFetch={apiFetch} />
         )}
@@ -952,6 +965,27 @@ export default function AdminDashboard() {
         destructive={true}
         onConfirm={() => handleInviteRelease(confirmReleaseId)}
         onCancel={() => setConfirmReleaseId(null)}
+      />
+      <ConfirmModal
+        open={!!pendingTableDelete}
+        destructive
+        title="Tafel verwijderen?"
+        body={pendingTableDelete
+          ? `Tafel ${pendingTableDelete.table_number} en alle plaatsen aan die tafel worden verwijderd.`
+          : ''}
+        confirmLabel="Verwijderen"
+        cancelLabel="Annuleren"
+        onCancel={() => setPendingTableDelete(null)}
+        onConfirm={async () => {
+          const res = await apiFetch(
+            `/api/admin/seating/tables/${pendingTableDelete.id}`,
+            undefined,
+            { method: 'DELETE' },
+          );
+          setToast(res.ok ? 'Tafel verwijderd' : 'Verwijderen mislukt');
+          setPendingTableDelete(null);
+          setSeatingNonce(n => n + 1);
+        }}
       />
     </div>
   );
