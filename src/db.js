@@ -262,6 +262,13 @@ function initDb(path = 'rsvps.db') {
     )
   `);
 
+  // Shared by the getSetting method and isSeatingPublished, so neither has to
+  // reach for `this` (which would break if a method is destructured off).
+  const getSetting = (key) => {
+    const row = db.prepare('SELECT value FROM app_settings WHERE key = :key').get({ key });
+    return row ? row.value : null;
+  };
+
   return {
     insertRsvp({ name, email, attending, event_type = null, dietary_restrictions = null }) {
       return db.prepare(`
@@ -539,10 +546,13 @@ function initDb(path = 'rsvps.db') {
       `).all();
     },
 
+    getRsvpAttendeeById(id) {
+      return db.prepare('SELECT * FROM rsvp_attendees WHERE id = :id').get({ id }) || null;
+    },
+
     // ── app_settings
     getSetting(key) {
-      const row = db.prepare('SELECT value FROM app_settings WHERE key = :key').get({ key });
-      return row ? row.value : null;
+      return getSetting(key);
     },
 
     setSetting(key, value) {
@@ -553,7 +563,7 @@ function initDb(path = 'rsvps.db') {
     },
 
     isSeatingPublished() {
-      return this.getSetting('seating_published') === '1';
+      return getSetting('seating_published') === '1';
     },
 
     // ── registry_items

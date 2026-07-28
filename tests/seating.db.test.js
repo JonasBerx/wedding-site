@@ -168,6 +168,12 @@ describe('seating assignment methods', () => {
     expect(unseated.map(u => u.rsvp_attendee_id)).toEqual([bob.id]);
   });
 
+  test('getRsvpAttendeeById returns the row, or null when missing', () => {
+    const [alice] = seatParty('a@x.com', ['Alice']);
+    expect(db.getRsvpAttendeeById(alice.id)).toMatchObject({ id: alice.id, name: 'Alice' });
+    expect(db.getRsvpAttendeeById(999)).toBeNull();
+  });
+
   test('deleting an assignment returns the guest to unseated', () => {
     const t = db.createSeatingTable({ table_number: 1 });
     const [alice] = seatParty('a@x.com', ['Alice']);

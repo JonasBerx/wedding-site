@@ -8,7 +8,8 @@ const MAX_GUEST_NAME = 120;
 // node:sqlite sets code to a generic 'ERR_SQLITE_ERROR' for every failure, and
 // the message text ("UNIQUE constraint failed: ...") is not a stable contract.
 // errcode is a fixed numeric constant. seating_tables has exactly one unique
-// constraint, so 2067 is unambiguous here.
+// constraint (table_number) and seating_assignments has exactly one (the partial
+// index on rsvp_attendee_id), so 2067 is unambiguous on either insert.
 const SQLITE_CONSTRAINT_UNIQUE = 2067;
 
 function parseTableName(raw) {
@@ -90,6 +91,65 @@ function createAdminSeatingRouter(db) {
     }
     db.setSetting('seating_published', published ? '1' : '0');
     res.json({ published });
+  });
+
+  // An assignment is either a linked attendee or a manually typed name, never
+  // both — the table has a CHECK enforcing that. Everything is validated here
+  // first so the CHECK is unreachable from HTTP.
+  router.post('/assignments', requireAuth, (req, res) => {
+    const { table_id, rsvp_attendee_id = null, guest_name = null } = req.body || {};
+    if (!Number.isInteger(table_id) || table_id <= 0) {
+      return res.status(400).json({ error: 'invalid_table_id' });
+    }
+
+    const hasAttendee = rsvp_attendee_id != null;
+    const hasName = guest_name != null;
+    if (hasAttendee === hasName) {
+      return res.status(400).json({ error: 'invalid_assignment_target' });
+    }
+
+    let cleanName = null;
+    if (hasName) {
+      if (typeof guest_name !== 'string') {
+        return res.status(400).json({ error: 'invalid_guest_name' });
+      }
+      cleanName = guest_name.trim();
+      if (!cleanName || cleanName.length > MAX_GUEST_NAME) {
+        return res.status(400).json({ error: 'invalid_guest_name' });
+      }
+    }
+    if (hasAttendee && !Number.isInteger(rsvp_attendee_id)) {
+      return res.status(400).json({ error: 'invalid_assignment_target' });
+    }
+
+    if (!db.getSeatingTableById(table_id)) {
+      return res.status(404).json({ error: 'table_not_found' });
+    }
+    if (hasAttendee && !db.getRsvpAttendeeById(rsvp_attendee_id)) {
+      return res.status(404).json({ error: 'attendee_not_found' });
+    }
+
+    try {
+      const created = db.createSeatingAssignment({
+        table_id,
+        rsvp_attendee_id: hasAttendee ? rsvp_attendee_id : null,
+        guest_name: cleanName,
+      });
+      return res.status(201).json(created);
+    } catch (err) {
+      if (err.errcode === SQLITE_CONSTRAINT_UNIQUE) {
+        return res.status(409).json({ error: 'already_seated' });
+      }
+      throw err;
+    }
+  });
+
+  router.delete('/assignments/:id', requireAuth, (req, res) => {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'invalid_id' });
+    const result = db.deleteSeatingAssignment(id);
+    if (result.changes === 0) return res.status(404).json({ error: 'assignment_not_found' });
+    res.status(204).end();
   });
 
   return router;
