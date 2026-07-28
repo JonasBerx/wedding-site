@@ -61,3 +61,38 @@ describe('seating schema', () => {
       "INSERT INTO seating_assignments (table_id, guest_name) VALUES (2, 'Oma')")).not.toThrow();
   });
 });
+
+describe('seating table methods', () => {
+  let db;
+  beforeEach(() => { db = initDb(':memory:'); });
+  afterEach(() => { db.close(); });
+
+  test('creates and lists tables ordered by number', () => {
+    db.createSeatingTable({ table_number: 3, name: 'Salie' });
+    db.createSeatingTable({ table_number: 1, name: 'Olijf' });
+    db.createSeatingTable({ table_number: 2, name: null });
+
+    const rows = db.getSeatingTables();
+    expect(rows.map(r => r.table_number)).toEqual([1, 2, 3]);
+    expect(rows[0].name).toBe('Olijf');
+    expect(rows[1].name).toBeNull();
+  });
+
+  test('getSeatingTableById returns null for a missing id', () => {
+    expect(db.getSeatingTableById(999)).toBeNull();
+  });
+
+  test('updates number and name', () => {
+    const t = db.createSeatingTable({ table_number: 1, name: 'Olijf' });
+    db.updateSeatingTable(t.id, { table_number: 9, name: 'Munt' });
+    const row = db.getSeatingTableById(t.id);
+    expect(row.table_number).toBe(9);
+    expect(row.name).toBe('Munt');
+  });
+
+  test('deletes a table', () => {
+    const t = db.createSeatingTable({ table_number: 1, name: null });
+    expect(db.deleteSeatingTable(t.id).changes).toBe(1);
+    expect(db.getSeatingTableById(t.id)).toBeNull();
+  });
+});

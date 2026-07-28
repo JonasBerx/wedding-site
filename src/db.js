@@ -442,6 +442,32 @@ function initDb(path = 'rsvps.db') {
       return { ok: true };
     },
 
+    // ── seating_tables
+    createSeatingTable({ table_number, name = null }) {
+      const result = db.prepare(
+        'INSERT INTO seating_tables (table_number, name) VALUES (:table_number, :name)'
+      ).run({ table_number, name });
+      return { id: Number(result.lastInsertRowid), table_number, name };
+    },
+
+    getSeatingTables() {
+      return db.prepare('SELECT * FROM seating_tables ORDER BY table_number ASC').all();
+    },
+
+    getSeatingTableById(id) {
+      return db.prepare('SELECT * FROM seating_tables WHERE id = :id').get({ id }) || null;
+    },
+
+    updateSeatingTable(id, { table_number, name = null }) {
+      return db.prepare(
+        'UPDATE seating_tables SET table_number = :table_number, name = :name WHERE id = :id'
+      ).run({ id, table_number, name });
+    },
+
+    deleteSeatingTable(id) {
+      return db.prepare('DELETE FROM seating_tables WHERE id = :id').run({ id });
+    },
+
     // ── registry_items
     insertRegistryItem({ title, description = null, unclaimable = 0 }) {
       return db.prepare(
