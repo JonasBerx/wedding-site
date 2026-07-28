@@ -11,6 +11,7 @@ const createMenuRouter = require('./routes/menu');
 const createPhotosRouter = require('./routes/photos');
 const createAdminPhotosRouter = require('./routes/adminPhotos');
 const createSeatingRouter = require('./routes/seating');
+const createAdminSeatingRouter = require('./routes/adminSeating');
 const { createAdminMenuRouter } = createMenuRouter;
 const { errorHandler } = require('./middleware/errorHandler');
 const { createRateLimiter } = require('./middleware/rateLimit');
@@ -56,6 +57,7 @@ function createApp(db, opts = {}) {
   app.use('/api/admin/photos', createAdminPhotosRouter(db, { mediaDir }));
   app.use('/media', createPhotosRouter.mediaRouter(db, { mediaDir }));
   app.use('/api/seating', createSeatingRouter(db));
+  app.use('/api/admin/seating', createAdminSeatingRouter(db));
 
   app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 
