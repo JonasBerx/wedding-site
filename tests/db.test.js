@@ -398,10 +398,15 @@ describe('upsertRsvp attendee identity', () => {
   });
   afterEach(() => { db.close(); });
 
-  function submit(names) {
+  // Each person is a bare name, or an object overriding the default choices.
+  function submit(people) {
+    const attendees = people.map(p => (
+      typeof p === 'string'
+        ? { name: p, first_course_id: fid, main_course_id: mid }
+        : { first_course_id: fid, main_course_id: mid, ...p }
+    ));
     db.upsertRsvp({
-      name: names[0], email: EMAIL, attending: 1, event_type: 'full',
-      attendees: names.map(n => ({ name: n, first_course_id: fid, main_course_id: mid })),
+      name: attendees[0].name, email: EMAIL, attending: 1, event_type: 'full', attendees,
     });
   }
 
@@ -468,5 +473,49 @@ describe('upsertRsvp attendee identity', () => {
     expect(after[0]).toEqual({ id: aliceId, name: 'Alice', position: 1 });
     expect(after[1]).toMatchObject({ name: 'Bob', position: 2 });
     expect(after[1].id).not.toBe(aliceId);
+  });
+
+  test('editing meal choices updates the row in place', () => {
+    // Reconciliation edits rows via UPDATE, so every column a guest can change
+    // has to be covered here — the INSERT-path tests no longer reach them.
+    const fid2 = db.insertMenuItem({ course: 'first', name: 'Soup' }).lastInsertRowid;
+    const mid2 = db.insertMenuItem({ course: 'main',  name: 'Cod'  }).lastInsertRowid;
+
+    submit([{ name: 'Alice', first_course_id: fid, main_course_id: mid }]);
+    const aliceId = rows()[0].id;
+
+    submit([{
+      name: 'Alice',
+      first_course_id: fid2,
+      main_course_id: mid2,
+      dietary_restrictions: 'vegan',
+    }]);
+
+    const after = db._rawAll(
+      `SELECT id, first_course_id, main_course_id, dietary_restrictions
+         FROM rsvp_attendees WHERE rsvp_id = ?`,
+      db.getRsvpByEmail(EMAIL).id,
+    );
+    expect(after).toEqual([{
+      id: aliceId,
+      first_course_id: fid2,
+      main_course_id: mid2,
+      dietary_restrictions: 'vegan',
+    }]);
+  });
+
+  test('name matching ignores surrounding whitespace and case', () => {
+    submit(['Alice', 'Bob']);
+    const [alice, bob] = rows();
+
+    // Both names are re-typed with different spacing and case *and* swapped.
+    // Only case/space-insensitive matching keeps each of them on their own
+    // row; falling back to leftovers in list order would swap the two rows.
+    submit([' bob ', ' alice ']);
+
+    expect(rows()).toEqual([
+      { id: bob.id,   name: ' bob ',   position: 1 },
+      { id: alice.id, name: ' alice ', position: 2 },
+    ]);
   });
 });

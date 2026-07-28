@@ -8,16 +8,19 @@ function _generateInviteToken() {
 // Reconcile a party's attendee rows in place. rsvp_attendees.id is referenced
 // by the seating feature, so a guest editing their RSVP must not churn ids:
 // re-inserting would cascade their seat away silently. Match each submitted
-// person to their existing row by name first so that a drop-out, a reorder, or
-// a corrected typo all keep the right person on the right row; leftover rows
-// absorb renames, and anything still unclaimed belonged to someone who is no
-// longer coming.
+// person to their existing row by name first, so that a drop-out, a reorder or
+// a corrected typo all keep the right person on the right row.
+//
+// Pass 2 cannot tell a rename from a substitution — ['Alice','Bob'] becoming
+// ['Bob','Cara'] looks identical whether Alice was renamed or replaced by Cara.
+// It deliberately reads a same-size swap as a rename, so the row and its seat
+// are retained by whoever takes that slot. Only a net shrink leaves rows
+// unclaimed, and those are the ones freed at the end.
 function reconcileAttendees(db, rsvpId, desired) {
-  const existing = db.prepare(
-    'SELECT id, position, name FROM rsvp_attendees WHERE rsvp_id = :id ORDER BY position'
+  const available = db.prepare(
+    'SELECT id, name FROM rsvp_attendees WHERE rsvp_id = :id ORDER BY position'
   ).all({ id: rsvpId });
 
-  const available = existing.slice();
   const claimedIdFor = new Array(desired.length).fill(null);
   const norm = (s) => String(s ?? '').trim().toLowerCase();
 
@@ -41,15 +44,20 @@ function reconcileAttendees(db, rsvpId, desired) {
       first_course_id = :first_course_id,
       main_course_id = :main_course_id,
       dietary_restrictions = :dietary_restrictions
-    WHERE id = :id
+    WHERE id = :id AND rsvp_id = :rsvp_id
   `);
   const ins = db.prepare(`
     INSERT INTO rsvp_attendees (rsvp_id, position, name, first_course_id, main_course_id, dietary_restrictions)
     VALUES (:rsvp_id, :position, :name, :first_course_id, :main_course_id, :dietary_restrictions)
   `);
 
+  // Positions are transiently duplicated inside this loop: a row still holding
+  // position N is only rewritten when its own turn comes, so a reorder or a
+  // mid-list insert has two rows sharing a position part-way through. Do NOT
+  // add a UNIQUE(rsvp_id, position) index — it would abort those edits.
   desired.forEach((a, idx) => {
     const fields = {
+      rsvp_id: rsvpId,
       position: idx + 1,
       name: a.name,
       first_course_id: a.first_course_id ?? null,
@@ -57,7 +65,7 @@ function reconcileAttendees(db, rsvpId, desired) {
       dietary_restrictions: a.dietary_restrictions ?? null,
     };
     if (claimedIdFor[idx] != null) upd.run({ ...fields, id: claimedIdFor[idx] });
-    else ins.run({ ...fields, rsvp_id: rsvpId });
+    else ins.run(fields);
   });
 
   const del = db.prepare('DELETE FROM rsvp_attendees WHERE id = :id');
