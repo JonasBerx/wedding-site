@@ -196,6 +196,64 @@ describe('/api/admin/seating — tables', () => {
     expect(res.body.name).toBeNull();
   });
 
+  // node:sqlite throws RangeError reading back an unsafe integer, which would
+  // 500 every later read of the row — including the SELECT * behind PATCH and
+  // DELETE, leaving the row unremovable through the API.
+  test('rejects an out-of-range table_number', async () => {
+    for (const table_number of [1e17, Number.MAX_SAFE_INTEGER + 1, 1000, 1.5, '1', 0, -1]) {
+      const res = await request(app).post('/api/admin/seating/tables')
+        .auth(...AUTH).send({ table_number });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('invalid_table_number');
+    }
+    expect(db.getSeatingTables()).toHaveLength(0);
+  });
+
+  test('accepts table_number 999 but not 1000', async () => {
+    const ok = await request(app).post('/api/admin/seating/tables')
+      .auth(...AUTH).send({ table_number: 999 });
+    expect(ok.status).toBe(201);
+    const over = await request(app).post('/api/admin/seating/tables')
+      .auth(...AUTH).send({ table_number: 1000 });
+    expect(over.status).toBe(400);
+  });
+
+  test('a huge table_number cannot be stored, so reads stay healthy', async () => {
+    const created = await request(app).post('/api/admin/seating/tables')
+      .auth(...AUTH).send({ table_number: 1e17 });
+    expect(created.status).toBe(400);
+    const list = await request(app).get('/api/admin/seating').auth(...AUTH);
+    expect(list.status).toBe(200);
+    expect(list.body.tables).toHaveLength(0);
+  });
+
+  test('patching to a huge table_number leaves the table readable and deletable', async () => {
+    const t = db.createSeatingTable({ table_number: 1, name: 'Olijf' });
+    const res = await request(app).patch(`/api/admin/seating/tables/${t.id}`)
+      .auth(...AUTH).send({ table_number: 1e17 });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('invalid_table_number');
+
+    const list = await request(app).get('/api/admin/seating').auth(...AUTH);
+    expect(list.status).toBe(200);
+    expect(list.body.tables[0].table_number).toBe(1);
+    const del = await request(app).delete(`/api/admin/seating/tables/${t.id}`).auth(...AUTH);
+    expect(del.status).toBe(204);
+  });
+
+  // parseInt('1abc') === 1 would delete a different, real table.
+  test('a malformed table id is rejected, never coerced onto another row', async () => {
+    const t = db.createSeatingTable({ table_number: 1, name: 'Olijf' });
+    for (const id of ['1abc', 'abc', '1.5', '-1', '1e2', '%20', '+1', '01abc']) {
+      const del = await request(app).delete(`/api/admin/seating/tables/${id}`).auth(...AUTH);
+      expect([del.status, del.body.error]).toEqual([400, 'invalid_id']);
+      const patch = await request(app).patch(`/api/admin/seating/tables/${id}`)
+        .auth(...AUTH).send({ table_number: 7 });
+      expect([patch.status, patch.body.error]).toEqual([400, 'invalid_id']);
+    }
+    expect(db.getSeatingTableById(t.id)).toMatchObject({ table_number: 1, name: 'Olijf' });
+  });
+
   test('GET returns published state, tables with assignments and unseated guests', async () => {
     const t = db.createSeatingTable({ table_number: 1, name: 'Olijf' });
     db.createSeatingAssignment({ table_id: t.id, guest_name: 'Oma Julia' });
@@ -211,11 +269,13 @@ describe('/api/admin/seating — tables', () => {
 describe('/api/admin/seating — assignments', () => {
   let app, db, f, m;
 
-  const seatParty = (email, names) => {
+  const seatParty = (email, names, event_type = 'full') => {
     db.upsertRsvp({
-      name: names[0], email, attending: 1, event_type: 'full',
+      name: names[0], email, attending: 1, event_type,
       attendees: names.map(n => ({
-        name: n, first_course_id: f.lastInsertRowid, main_course_id: m.lastInsertRowid,
+        name: n,
+        first_course_id: event_type === 'full' ? f.lastInsertRowid : null,
+        main_course_id:  event_type === 'full' ? m.lastInsertRowid : null,
       })),
     });
     const rsvp = db.getRsvpByEmail(email);
@@ -391,6 +451,52 @@ describe('/api/admin/seating — assignments', () => {
     const bad = await request(app).delete('/api/admin/seating/assignments/abc').auth(...AUTH);
     expect(bad.status).toBe(400);
     expect(bad.body.error).toBe('invalid_id');
+  });
+
+  // The unseated list only ever offers attending full-day guests; the write
+  // side must agree, or a ceremony-only guest ends up on the public chart.
+  test('refuses to seat a non-dinner or non-attending attendee', async () => {
+    const t = db.createSeatingTable({ table_number: 1 });
+    const [cy] = seatParty('ceremony@x.com', ['Cy'], 'ceremony');
+    const [eve] = seatParty('evening@x.com', ['Eve'], 'evening');
+
+    for (const attendee of [cy, eve]) {
+      const res = await request(app).post('/api/admin/seating/assignments')
+        .auth(...AUTH).send({ table_id: t.id, rsvp_attendee_id: attendee.id });
+      expect([res.status, res.body.error]).toEqual([404, 'attendee_not_found']);
+    }
+    expect(db._rawAll('SELECT id FROM seating_assignments')).toHaveLength(0);
+    expect(db.getSeatingTablesWithAssignments()[0].assignments).toHaveLength(0);
+  });
+
+  test('a malformed assignment id is rejected, never coerced onto another row', async () => {
+    const t = db.createSeatingTable({ table_number: 1 });
+    const a = db.createSeatingAssignment({ table_id: t.id, guest_name: 'Oma Julia' });
+    for (const id of ['1abc', 'abc', '1.5', '-1', '1e2', '%20', '+1']) {
+      const res = await request(app).delete(`/api/admin/seating/assignments/${id}`).auth(...AUTH);
+      expect([res.status, res.body.error]).toEqual([400, 'invalid_id']);
+    }
+    expect(db._rawAll('SELECT id FROM seating_assignments').map(r => r.id)).toEqual([a.id]);
+  });
+
+  // A name made only of invisible characters survives trim() and would render
+  // as a blank chair on the public chart.
+  test('rejects a guest_name made only of invisible characters', async () => {
+    const t = db.createSeatingTable({ table_number: 1 });
+    for (const guest_name of ['\u0007', '\uD800', '\u200B', '\uFEFF', '\u0000', '\u200E ']) {
+      const res = await request(app).post('/api/admin/seating/assignments')
+        .auth(...AUTH).send({ table_id: t.id, guest_name });
+      expect([res.status, res.body.error]).toEqual([400, 'invalid_guest_name']);
+    }
+    expect(db._rawAll('SELECT id FROM seating_assignments')).toHaveLength(0);
+  });
+
+  test('strips invisible characters from an otherwise real guest_name', async () => {
+    const t = db.createSeatingTable({ table_number: 1 });
+    const res = await request(app).post('/api/admin/seating/assignments')
+      .auth(...AUTH).send({ table_id: t.id, guest_name: ' Oma\u200B Julia\uFEFF ' });
+    expect(res.status).toBe(201);
+    expect(db.getSeatingTablesWithAssignments()[0].assignments[0].display_name).toBe('Oma Julia');
   });
 
   test('a non-unique database error on assignment insert surfaces as a 500', async () => {

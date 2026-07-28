@@ -4,6 +4,34 @@ const { requireAuth } = require('../middleware/auth');
 const MAX_TABLE_NAME = 60;
 const MAX_GUEST_NAME = 120;
 
+// node:sqlite throws RangeError on reading back an integer outside the JS safe
+// range, so an unbounded table_number would poison every later read of the row
+// — including the SELECT * that PATCH and DELETE rely on, leaving the row
+// unremovable through the API. A wedding has well under 999 tables.
+const MAX_TABLE_NUMBER = 999;
+
+const isValidTableNumber = (n) =>
+  Number.isSafeInteger(n) && n >= 1 && n <= MAX_TABLE_NUMBER;
+
+// Strips characters that render as nothing but survive trim(): C0/C1 controls,
+// zero-width and bidi marks, and unpaired surrogates. Without this, a name that
+// is nothing but a BEL or a zero-width space is truthy and would store as a
+// blank chair on the public chart.
+const INVISIBLE = new RegExp(
+  '[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u2028\u2029\u2060\uFEFF]'
+  + '|[\uD800-\uDBFF](?![\uDC00-\uDFFF])'
+  + '|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]',
+  'g',
+);
+
+// parseInt('1abc') is 1, which would delete a real row for a malformed id.
+// Only accept an id that is entirely digits. Scoped to this router.
+function parseId(raw) {
+  if (!/^\d+$/.test(raw ?? '')) return null;
+  const id = Number(raw);
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
+
 // SQLITE_CONSTRAINT_UNIQUE. Do not discriminate on err.code or err.message:
 // node:sqlite sets code to a generic 'ERR_SQLITE_ERROR' for every failure, and
 // the message text ("UNIQUE constraint failed: ...") is not a stable contract.
@@ -33,7 +61,7 @@ function createAdminSeatingRouter(db) {
 
   router.post('/tables', requireAuth, (req, res) => {
     const { table_number, name } = req.body || {};
-    if (!Number.isInteger(table_number) || table_number < 1) {
+    if (!isValidTableNumber(table_number)) {
       return res.status(400).json({ error: 'invalid_table_number' });
     }
     const parsed = parseTableName(name);
@@ -50,14 +78,14 @@ function createAdminSeatingRouter(db) {
   });
 
   router.patch('/tables/:id', requireAuth, (req, res) => {
-    const id = parseInt(req.params.id, 10);
-    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'invalid_id' });
+    const id = parseId(req.params.id);
+    if (id === null) return res.status(400).json({ error: 'invalid_id' });
 
     const existing = db.getSeatingTableById(id);
     if (!existing) return res.status(404).json({ error: 'table_not_found' });
 
     const table_number = req.body?.table_number ?? existing.table_number;
-    if (!Number.isInteger(table_number) || table_number < 1) {
+    if (!isValidTableNumber(table_number)) {
       return res.status(400).json({ error: 'invalid_table_number' });
     }
     const parsed = 'name' in (req.body || {})
@@ -77,8 +105,8 @@ function createAdminSeatingRouter(db) {
   });
 
   router.delete('/tables/:id', requireAuth, (req, res) => {
-    const id = parseInt(req.params.id, 10);
-    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'invalid_id' });
+    const id = parseId(req.params.id);
+    if (id === null) return res.status(400).json({ error: 'invalid_id' });
     if (!db.getSeatingTableById(id)) return res.status(404).json({ error: 'table_not_found' });
     db.deleteSeatingTable(id);
     res.status(204).end();
@@ -113,7 +141,7 @@ function createAdminSeatingRouter(db) {
       if (typeof guest_name !== 'string') {
         return res.status(400).json({ error: 'invalid_guest_name' });
       }
-      cleanName = guest_name.trim();
+      cleanName = guest_name.replace(INVISIBLE, '').trim();
       if (!cleanName || cleanName.length > MAX_GUEST_NAME) {
         return res.status(400).json({ error: 'invalid_guest_name' });
       }
@@ -125,7 +153,9 @@ function createAdminSeatingRouter(db) {
     if (!db.getSeatingTableById(table_id)) {
       return res.status(404).json({ error: 'table_not_found' });
     }
-    if (hasAttendee && !db.getRsvpAttendeeById(rsvp_attendee_id)) {
+    // Seatable, not merely existent: a ceremony-only or evening-only guest is
+    // never offered in the unseated list and must not be seatable either.
+    if (hasAttendee && !db.getSeatableAttendeeById(rsvp_attendee_id)) {
       return res.status(404).json({ error: 'attendee_not_found' });
     }
 
@@ -145,8 +175,8 @@ function createAdminSeatingRouter(db) {
   });
 
   router.delete('/assignments/:id', requireAuth, (req, res) => {
-    const id = parseInt(req.params.id, 10);
-    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'invalid_id' });
+    const id = parseId(req.params.id);
+    if (id === null) return res.status(400).json({ error: 'invalid_id' });
     const result = db.deleteSeatingAssignment(id);
     if (result.changes === 0) return res.status(404).json({ error: 'assignment_not_found' });
     res.status(204).end();
@@ -156,5 +186,3 @@ function createAdminSeatingRouter(db) {
 }
 
 module.exports = createAdminSeatingRouter;
-module.exports.MAX_GUEST_NAME = MAX_GUEST_NAME;
-module.exports.SQLITE_CONSTRAINT_UNIQUE = SQLITE_CONSTRAINT_UNIQUE;

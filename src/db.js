@@ -546,8 +546,16 @@ function initDb(path = 'rsvps.db') {
       `).all();
     },
 
-    getRsvpAttendeeById(id) {
-      return db.prepare('SELECT * FROM rsvp_attendees WHERE id = :id').get({ id }) || null;
+    // Write-side counterpart to getUnseatedAttendees: same "dinner guest"
+    // predicate, so an attendee that never appears in the unseated list can
+    // never be seated through the API either.
+    getSeatableAttendeeById(id) {
+      return db.prepare(`
+        SELECT ra.*
+        FROM rsvp_attendees ra
+        JOIN rsvps r ON r.id = ra.rsvp_id
+        WHERE ra.id = :id AND r.attending = 1 AND r.event_type = 'full'
+      `).get({ id }) || null;
     },
 
     // ── app_settings

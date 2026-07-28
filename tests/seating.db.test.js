@@ -168,10 +168,23 @@ describe('seating assignment methods', () => {
     expect(unseated.map(u => u.rsvp_attendee_id)).toEqual([bob.id]);
   });
 
-  test('getRsvpAttendeeById returns the row, or null when missing', () => {
+  test('getSeatableAttendeeById returns the row, or null when missing', () => {
     const [alice] = seatParty('a@x.com', ['Alice']);
-    expect(db.getRsvpAttendeeById(alice.id)).toMatchObject({ id: alice.id, name: 'Alice' });
-    expect(db.getRsvpAttendeeById(999)).toBeNull();
+    expect(db.getSeatableAttendeeById(alice.id)).toMatchObject({ id: alice.id, name: 'Alice' });
+    expect(db.getSeatableAttendeeById(999)).toBeNull();
+  });
+
+  // Mirrors getUnseatedAttendees: anyone who is never offered for seating must
+  // not be seatable either.
+  test('getSeatableAttendeeById excludes non-dinner and non-attending guests', () => {
+    const [cy] = seatParty('ceremony@x.com', ['Cy'], 'ceremony');
+    const [eve] = seatParty('evening@x.com', ['Eve'], 'evening');
+    expect(db.getSeatableAttendeeById(cy.id)).toBeNull();
+    expect(db.getSeatableAttendeeById(eve.id)).toBeNull();
+
+    const [ann] = seatParty('no@x.com', ['Ann']);
+    db.upsertRsvp({ name: 'Ann', email: 'no@x.com', attending: 0, event_type: 'full', attendees: [] });
+    expect(db.getSeatableAttendeeById(ann.id)).toBeNull();
   });
 
   test('deleting an assignment returns the guest to unseated', () => {
