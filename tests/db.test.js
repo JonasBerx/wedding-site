@@ -382,3 +382,56 @@ describe('getMealCounts', () => {
     db.close();
   });
 });
+
+describe('upsertRsvp attendee identity', () => {
+  test('attendee ids survive an RSVP edit', () => {
+    const db = initDb(':memory:');
+    const f = db.insertMenuItem({ course: 'first', name: 'Tomato' });
+    const m = db.insertMenuItem({ course: 'main',  name: 'Lamb' });
+    const payload = (names) => ({
+      name: names[0], email: 'a@x.com', attending: 1, event_type: 'full',
+      attendees: names.map(n => ({
+        name: n,
+        first_course_id: f.lastInsertRowid,
+        main_course_id: m.lastInsertRowid,
+      })),
+    });
+
+    db.upsertRsvp(payload(['Alice', 'Bob']));
+    const before = db.getRsvpByEmail('a@x.com');
+    const idsBefore = db.rawAll('SELECT id FROM rsvp_attendees WHERE rsvp_id = ? ORDER BY position', before.id);
+
+    db.upsertRsvp(payload(['Alice', 'Bobby']));
+    const idsAfter = db.rawAll('SELECT id FROM rsvp_attendees WHERE rsvp_id = ? ORDER BY position', before.id);
+
+    expect(idsAfter.map(r => r.id)).toEqual(idsBefore.map(r => r.id));
+    const after = db.getRsvpByEmail('a@x.com');
+    expect(after.attendees.map(a => a.name)).toEqual(['Alice', 'Bobby']);
+    db.close();
+  });
+
+  test('shrinking a party deletes only the surplus rows', () => {
+    const db = initDb(':memory:');
+    const f = db.insertMenuItem({ course: 'first', name: 'Tomato' });
+    const m = db.insertMenuItem({ course: 'main',  name: 'Lamb' });
+    const payload = (names) => ({
+      name: names[0], email: 'b@x.com', attending: 1, event_type: 'full',
+      attendees: names.map(n => ({
+        name: n,
+        first_course_id: f.lastInsertRowid,
+        main_course_id: m.lastInsertRowid,
+      })),
+    });
+
+    db.upsertRsvp(payload(['Alice', 'Bob', 'Cara']));
+    const rsvp = db.getRsvpByEmail('b@x.com');
+    const firstId = db.rawAll('SELECT id FROM rsvp_attendees WHERE rsvp_id = ? ORDER BY position', rsvp.id)[0].id;
+
+    db.upsertRsvp(payload(['Alice']));
+    const rows = db.rawAll('SELECT id, name FROM rsvp_attendees WHERE rsvp_id = ? ORDER BY position', rsvp.id);
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].id).toBe(firstId);
+    db.close();
+  });
+});

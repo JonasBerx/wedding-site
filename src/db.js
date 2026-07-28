@@ -198,24 +198,47 @@ function initDb(path = 'rsvps.db') {
           outcome = { id: result.lastInsertRowid, was_update: false, prev_attending: null };
         }
 
-        db.prepare('DELETE FROM rsvp_attendees WHERE rsvp_id = :id').run({ id: outcome.id });
+        // Reconcile attendees by position instead of delete-and-reinsert, so
+        // rsvp_attendees.id stays stable across edits. seating_assignments
+        // references those ids; re-inserting would cascade seats away silently.
+        const desired = (attending === 1 && Array.isArray(attendees)) ? attendees : [];
 
-        if (attending === 1 && Array.isArray(attendees) && attendees.length > 0) {
-          const ins = db.prepare(`
-            INSERT INTO rsvp_attendees (rsvp_id, position, name, first_course_id, main_course_id, dietary_restrictions)
-            VALUES (:rsvp_id, :position, :name, :first_course_id, :main_course_id, :dietary_restrictions)
-          `);
-          attendees.forEach((a, idx) => {
-            ins.run({
-              rsvp_id: outcome.id,
-              position: idx + 1,
-              name: a.name,
-              first_course_id: a.first_course_id ?? null,
-              main_course_id:  a.main_course_id  ?? null,
-              dietary_restrictions: a.dietary_restrictions ?? null,
-            });
-          });
-        }
+        const existingRows = db.prepare(
+          'SELECT id, position FROM rsvp_attendees WHERE rsvp_id = :id ORDER BY position'
+        ).all({ id: outcome.id });
+        const idByPosition = new Map(existingRows.map(r => [r.position, r.id]));
+
+        const updAttendee = db.prepare(`
+          UPDATE rsvp_attendees SET
+            name = :name,
+            first_course_id = :first_course_id,
+            main_course_id = :main_course_id,
+            dietary_restrictions = :dietary_restrictions
+          WHERE id = :id
+        `);
+        const insAttendee = db.prepare(`
+          INSERT INTO rsvp_attendees (rsvp_id, position, name, first_course_id, main_course_id, dietary_restrictions)
+          VALUES (:rsvp_id, :position, :name, :first_course_id, :main_course_id, :dietary_restrictions)
+        `);
+
+        desired.forEach((a, idx) => {
+          const position = idx + 1;
+          const fields = {
+            name: a.name,
+            first_course_id: a.first_course_id ?? null,
+            main_course_id:  a.main_course_id  ?? null,
+            dietary_restrictions: a.dietary_restrictions ?? null,
+          };
+          const existingId = idByPosition.get(position);
+          if (existingId != null) {
+            updAttendee.run({ ...fields, id: existingId });
+          } else {
+            insAttendee.run({ ...fields, rsvp_id: outcome.id, position });
+          }
+        });
+
+        db.prepare('DELETE FROM rsvp_attendees WHERE rsvp_id = :id AND position > :keep')
+          .run({ id: outcome.id, keep: desired.length });
 
         let invite_consumed = false;
         if (consumeInviteId != null) {
@@ -599,6 +622,10 @@ function initDb(path = 'rsvps.db') {
         throw new Error(`_tableInfo: invalid table name ${name}`);
       }
       return db.prepare(`PRAGMA table_info(${name})`).all();
+    },
+    // Test-only: run an arbitrary read query. Do not use in production code.
+    rawAll(sql, ...params) {
+      return db.prepare(sql).all(...params);
     },
     // Test-only: raw DatabaseSync handle. Do not use in production code.
     _raw: db,
