@@ -2,6 +2,7 @@ import React from 'react';
 import { Sprig } from '../botanicals';
 import Toast from '../components/Toast';
 import ConfirmModal from '../components/ConfirmModal';
+import SeatingAdminTab from '../components/SeatingAdminTab';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, useSortable, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -253,6 +254,8 @@ export default function AdminDashboard() {
   const [copyOk, setCopyOk] = React.useState(null);
   const [confirmReleaseId, setConfirmReleaseId] = React.useState(null);
   const [confirmDeleteId, setConfirmDeleteId] = React.useState(null);
+  const [pendingTableDelete, setPendingTableDelete] = React.useState(null);
+  const [seatingNonce, setSeatingNonce] = React.useState(0);
 
   async function apiFetch(path, creds, options = {}) {
     return fetch(path, {
@@ -270,6 +273,14 @@ export default function AdminDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Shared by loadData and by any tab that meets a 401 of its own, so an expired
+  // session always lands in the same place instead of failing silently.
+  function handleAuthExpired() {
+    setAuth(null);
+    try { localStorage.removeItem(AUTH_STORAGE_KEY); } catch {}
+    setAuthError('Session expired. Please log in again.');
+  }
+
   async function loadData(creds) {
     const [rsvpsRes, regRes, menuRes, mealCountsRes, invitesRes] = await Promise.all([
       apiFetch('/api/admin/rsvps', creds),
@@ -279,9 +290,7 @@ export default function AdminDashboard() {
       apiFetch('/api/admin/invites', creds),
     ]);
     if (rsvpsRes.status === 401) {
-      setAuth(null);
-      try { localStorage.removeItem(AUTH_STORAGE_KEY); } catch {}
-      setAuthError('Session expired. Please log in again.');
+      handleAuthExpired();
       return;
     }
     setRsvps(await rsvpsRes.json());
@@ -532,6 +541,7 @@ export default function AdminDashboard() {
             { key: 'registry', label: `REGISTRY · ${registry.length}` },
             { key: 'menu',     label: `MENU · ${menu.length}` },
             { key: 'invites',  label: `INVITES · ${invites.length}` },
+            { key: 'seating',  label: 'SEATING' },
             { key: 'photos',   label: 'PHOTOS' },
           ].map(({ key, label }) => (
             <button
@@ -556,7 +566,7 @@ export default function AdminDashboard() {
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr>
-                    {['ID','Name','Email','Attending','Event','# Attendees','Party note','Submitted'].map(h => (
+                    {['ID','Name','Email','Attending','Event','# Attendees','Party note','Song','Submitted'].map(h => (
                       <th key={h} style={thStyle}>{h}</th>
                     ))}
                   </tr>
@@ -577,11 +587,12 @@ export default function AdminDashboard() {
                         </td>
                         <td style={tdStyle}>{(r.attendees || []).length}</td>
                         <td style={tdStyle}>{r.dietary_restrictions || '—'}</td>
+                        <td style={tdStyle}>{r.song || '—'}</td>
                         <td style={{ ...tdStyle, color: INK_SOFT }}>{r.submitted_at}</td>
                       </tr>
                       {(r.attendees || []).length > 0 && (
                         <tr>
-                          <td colSpan={8} style={{ ...tdStyle, background: PAPER_DARK, paddingLeft: 36 }}>
+                          <td colSpan={9} style={{ ...tdStyle, background: PAPER_DARK, paddingLeft: 36 }}>
                             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                               <thead>
                                 <tr>
@@ -911,6 +922,16 @@ export default function AdminDashboard() {
           </>
         )}
 
+        {tab === 'seating' && (
+          <SeatingAdminTab
+            key={seatingNonce}
+            apiFetch={apiFetch}
+            onToast={setToast}
+            onConfirmDeleteTable={setPendingTableDelete}
+            onAuthExpired={handleAuthExpired}
+          />
+        )}
+
         {tab === 'photos' && (
           <GuestPhotosAdminTab apiFetch={apiFetch} />
         )}
@@ -951,6 +972,26 @@ export default function AdminDashboard() {
         destructive={true}
         onConfirm={() => handleInviteRelease(confirmReleaseId)}
         onCancel={() => setConfirmReleaseId(null)}
+      />
+      <ConfirmModal
+        open={!!pendingTableDelete}
+        destructive
+        title="Delete this table?"
+        body={pendingTableDelete
+          ? `Table ${pendingTableDelete.table_number} and every seat at it will be deleted.`
+          : ''}
+        confirmLabel="Delete"
+        onCancel={() => setPendingTableDelete(null)}
+        onConfirm={async () => {
+          const res = await apiFetch(
+            `/api/admin/seating/tables/${pendingTableDelete.id}`,
+            undefined,
+            { method: 'DELETE' },
+          );
+          setToast(res.ok ? 'Table deleted' : 'Could not delete the table.');
+          setPendingTableDelete(null);
+          setSeatingNonce(n => n + 1);
+        }}
       />
     </div>
   );

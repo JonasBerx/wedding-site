@@ -215,7 +215,7 @@ describe('upsertRsvp with attendees', () => {
     expect(rsvp.attendees[1]).toMatchObject({ position: 2, name: 'Bob' });
   });
 
-  test('replaces attendees on update (old rows gone, new positions)', () => {
+  test('grows a party, appending new positions', () => {
     const { fid, mid } = seedMenu();
     db.upsertRsvp({
       name: 'Alice', email: 'a@x.com', attending: 1, event_type: 'full',
@@ -380,5 +380,142 @@ describe('getMealCounts', () => {
       { course: 'main',  menu_item_id: salmon,  name: 'Salmon',  count: 1 },
     ]);
     db.close();
+  });
+});
+
+describe('upsertRsvp attendee identity', () => {
+  // The seating feature will reference rsvp_attendees.id, so these tests pin
+  // down which row each submitted person lands on across an edit.
+  let db;
+  let fid;
+  let mid;
+  const EMAIL = 'a@x.com';
+
+  beforeEach(() => {
+    db = initDb(':memory:');
+    fid = db.insertMenuItem({ course: 'first', name: 'Tomato' }).lastInsertRowid;
+    mid = db.insertMenuItem({ course: 'main',  name: 'Lamb'   }).lastInsertRowid;
+  });
+  afterEach(() => { db.close(); });
+
+  // Each person is a bare name, or an object overriding the default choices.
+  function submit(people) {
+    const attendees = people.map(p => (
+      typeof p === 'string'
+        ? { name: p, first_course_id: fid, main_course_id: mid }
+        : { first_course_id: fid, main_course_id: mid, ...p }
+    ));
+    db.upsertRsvp({
+      name: attendees[0].name, email: EMAIL, attending: 1, event_type: 'full', attendees,
+    });
+  }
+
+  // Attendee rows for the party, in seating order.
+  function rows() {
+    const rsvp = db.getRsvpByEmail(EMAIL);
+    return db._rawAll(
+      'SELECT id, name, position FROM rsvp_attendees WHERE rsvp_id = ? ORDER BY position',
+      rsvp.id,
+    );
+  }
+
+  test('attendee ids survive an RSVP edit', () => {
+    submit(['Alice', 'Bob']);
+    const idsBefore = rows().map(r => r.id);
+
+    submit(['Alice', 'Bobby']);
+
+    expect(rows().map(r => r.id)).toEqual(idsBefore);
+    expect(rows().map(r => r.name)).toEqual(['Alice', 'Bobby']);
+  });
+
+  test('shrinking a party deletes only the surplus rows', () => {
+    submit(['Alice', 'Bob', 'Cara']);
+    const firstId = rows()[0].id;
+
+    submit(['Alice']);
+
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0].id).toBe(firstId);
+  });
+
+  test('a guest dropping out leaves the survivor on their own row', () => {
+    submit(['Alice', 'Bob']);
+    const [alice, bob] = rows();
+
+    submit(['Bob']);
+
+    // Bob keeps his own id — he must not inherit Alice's row (and her seat).
+    expect(rows()).toEqual([{ id: bob.id, name: 'Bob', position: 1 }]);
+    expect(rows().some(r => r.id === alice.id)).toBe(false);
+  });
+
+  test('reordering a party keeps both ids and swaps positions', () => {
+    submit(['Alice', 'Bob']);
+    const [alice, bob] = rows();
+
+    submit(['Bob', 'Alice']);
+
+    expect(rows()).toEqual([
+      { id: bob.id,   name: 'Bob',   position: 1 },
+      { id: alice.id, name: 'Alice', position: 2 },
+    ]);
+  });
+
+  test('growing a party keeps existing ids and appends the newcomer', () => {
+    submit(['Alice']);
+    const aliceId = rows()[0].id;
+
+    submit(['Alice', 'Bob']);
+
+    const after = rows();
+    expect(after).toHaveLength(2);
+    expect(after[0]).toEqual({ id: aliceId, name: 'Alice', position: 1 });
+    expect(after[1]).toMatchObject({ name: 'Bob', position: 2 });
+    expect(after[1].id).not.toBe(aliceId);
+  });
+
+  test('editing meal choices updates the row in place', () => {
+    // Reconciliation edits rows via UPDATE, so every column a guest can change
+    // has to be covered here — the INSERT-path tests no longer reach them.
+    const fid2 = db.insertMenuItem({ course: 'first', name: 'Soup' }).lastInsertRowid;
+    const mid2 = db.insertMenuItem({ course: 'main',  name: 'Cod'  }).lastInsertRowid;
+
+    submit([{ name: 'Alice', first_course_id: fid, main_course_id: mid }]);
+    const aliceId = rows()[0].id;
+
+    submit([{
+      name: 'Alice',
+      first_course_id: fid2,
+      main_course_id: mid2,
+      dietary_restrictions: 'vegan',
+    }]);
+
+    const after = db._rawAll(
+      `SELECT id, first_course_id, main_course_id, dietary_restrictions
+         FROM rsvp_attendees WHERE rsvp_id = ?`,
+      db.getRsvpByEmail(EMAIL).id,
+    );
+    expect(after).toEqual([{
+      id: aliceId,
+      first_course_id: fid2,
+      main_course_id: mid2,
+      dietary_restrictions: 'vegan',
+    }]);
+  });
+
+  test('name matching ignores surrounding whitespace and case', () => {
+    submit(['Alice', 'Bob']);
+    const [alice, bob] = rows();
+
+    // Both names are re-typed with different spacing and case *and* swapped.
+    // Only case/space-insensitive matching keeps each of them on their own
+    // row; falling back to leftovers in list order would swap the two rows.
+    submit([' bob ', ' alice ']);
+
+    expect(rows()).toEqual([
+      { id: bob.id,   name: ' bob ',   position: 1 },
+      { id: alice.id, name: ' alice ', position: 2 },
+    ]);
   });
 });

@@ -5,6 +5,73 @@ function _generateInviteToken() {
   return crypto.randomBytes(16).toString('base64url');
 }
 
+// Reconcile a party's attendee rows in place. rsvp_attendees.id is referenced
+// by the seating feature, so a guest editing their RSVP must not churn ids:
+// re-inserting would cascade their seat away silently. Match each submitted
+// person to their existing row by name first, so that a drop-out, a reorder or
+// a corrected typo all keep the right person on the right row.
+//
+// Pass 2 cannot tell a rename from a substitution — ['Alice','Bob'] becoming
+// ['Bob','Cara'] looks identical whether Alice was renamed or replaced by Cara.
+// It deliberately reads a same-size swap as a rename, so the row and its seat
+// are retained by whoever takes that slot. Only a net shrink leaves rows
+// unclaimed, and those are the ones freed at the end.
+function reconcileAttendees(db, rsvpId, desired) {
+  const available = db.prepare(
+    'SELECT id, name FROM rsvp_attendees WHERE rsvp_id = :id ORDER BY position'
+  ).all({ id: rsvpId });
+
+  const claimedIdFor = new Array(desired.length).fill(null);
+  const norm = (s) => String(s ?? '').trim().toLowerCase();
+
+  // Pass 1: the same person, wherever they moved to in the list.
+  desired.forEach((a, idx) => {
+    const at = available.findIndex(r => norm(r.name) === norm(a.name));
+    if (at !== -1) claimedIdFor[idx] = available.splice(at, 1)[0].id;
+  });
+
+  // Pass 2: leftover rows absorb renames and typo corrections, in list order.
+  desired.forEach((a, idx) => {
+    if (claimedIdFor[idx] == null && available.length > 0) {
+      claimedIdFor[idx] = available.shift().id;
+    }
+  });
+
+  const upd = db.prepare(`
+    UPDATE rsvp_attendees SET
+      position = :position,
+      name = :name,
+      first_course_id = :first_course_id,
+      main_course_id = :main_course_id,
+      dietary_restrictions = :dietary_restrictions
+    WHERE id = :id AND rsvp_id = :rsvp_id
+  `);
+  const ins = db.prepare(`
+    INSERT INTO rsvp_attendees (rsvp_id, position, name, first_course_id, main_course_id, dietary_restrictions)
+    VALUES (:rsvp_id, :position, :name, :first_course_id, :main_course_id, :dietary_restrictions)
+  `);
+
+  // Positions are transiently duplicated inside this loop: a row still holding
+  // position N is only rewritten when its own turn comes, so a reorder or a
+  // mid-list insert has two rows sharing a position part-way through. Do NOT
+  // add a UNIQUE(rsvp_id, position) index — it would abort those edits.
+  desired.forEach((a, idx) => {
+    const fields = {
+      rsvp_id: rsvpId,
+      position: idx + 1,
+      name: a.name,
+      first_course_id: a.first_course_id ?? null,
+      main_course_id:  a.main_course_id  ?? null,
+      dietary_restrictions: a.dietary_restrictions ?? null,
+    };
+    if (claimedIdFor[idx] != null) upd.run({ ...fields, id: claimedIdFor[idx] });
+    else ins.run(fields);
+  });
+
+  const del = db.prepare('DELETE FROM rsvp_attendees WHERE id = :id');
+  for (const row of available) del.run({ id: row.id });
+}
+
 function initDb(path = 'rsvps.db') {
   const db = new DatabaseSync(path);
   db.exec('PRAGMA foreign_keys = ON');
@@ -163,6 +230,45 @@ function initDb(path = 'rsvps.db') {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_guest_photos_visible_uploaded
             ON guest_photos (hidden, uploaded_at DESC, id DESC)`);
 
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS seating_tables (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      table_number INTEGER NOT NULL UNIQUE,
+      name         TEXT,
+      created_at   TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%f','now'))
+    )
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS seating_assignments (
+      id               INTEGER PRIMARY KEY AUTOINCREMENT,
+      table_id         INTEGER NOT NULL REFERENCES seating_tables(id) ON DELETE CASCADE,
+      rsvp_attendee_id INTEGER REFERENCES rsvp_attendees(id) ON DELETE CASCADE,
+      guest_name       TEXT,
+      position         INTEGER NOT NULL DEFAULT 0,
+      CHECK ((rsvp_attendee_id IS NULL) <> (guest_name IS NULL))
+    )
+  `);
+
+  db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS seating_assignments_attendee
+            ON seating_assignments(rsvp_attendee_id) WHERE rsvp_attendee_id IS NOT NULL`);
+  db.exec(`CREATE INDEX IF NOT EXISTS seating_assignments_table
+            ON seating_assignments(table_id)`);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key   TEXT PRIMARY KEY NOT NULL,
+      value TEXT NOT NULL
+    )
+  `);
+
+  // Shared by the getSetting method and isSeatingPublished, so neither has to
+  // reach for `this` (which would break if a method is destructured off).
+  const getSetting = (key) => {
+    const row = db.prepare('SELECT value FROM app_settings WHERE key = :key').get({ key });
+    return row ? row.value : null;
+  };
+
   return {
     insertRsvp({ name, email, attending, event_type = null, dietary_restrictions = null }) {
       return db.prepare(`
@@ -198,24 +304,7 @@ function initDb(path = 'rsvps.db') {
           outcome = { id: result.lastInsertRowid, was_update: false, prev_attending: null };
         }
 
-        db.prepare('DELETE FROM rsvp_attendees WHERE rsvp_id = :id').run({ id: outcome.id });
-
-        if (attending === 1 && Array.isArray(attendees) && attendees.length > 0) {
-          const ins = db.prepare(`
-            INSERT INTO rsvp_attendees (rsvp_id, position, name, first_course_id, main_course_id, dietary_restrictions)
-            VALUES (:rsvp_id, :position, :name, :first_course_id, :main_course_id, :dietary_restrictions)
-          `);
-          attendees.forEach((a, idx) => {
-            ins.run({
-              rsvp_id: outcome.id,
-              position: idx + 1,
-              name: a.name,
-              first_course_id: a.first_course_id ?? null,
-              main_course_id:  a.main_course_id  ?? null,
-              dietary_restrictions: a.dietary_restrictions ?? null,
-            });
-          });
-        }
+        reconcileAttendees(db, outcome.id, (attending === 1 && Array.isArray(attendees)) ? attendees : []);
 
         let invite_consumed = false;
         if (consumeInviteId != null) {
@@ -358,6 +447,131 @@ function initDb(path = 'rsvps.db') {
         throw err;
       }
       return { ok: true };
+    },
+
+    // ── seating_tables
+    createSeatingTable({ table_number, name = null }) {
+      const result = db.prepare(
+        'INSERT INTO seating_tables (table_number, name) VALUES (:table_number, :name)'
+      ).run({ table_number, name });
+      return { id: Number(result.lastInsertRowid), table_number, name };
+    },
+
+    getSeatingTables() {
+      return db.prepare('SELECT * FROM seating_tables ORDER BY table_number ASC').all();
+    },
+
+    getSeatingTableById(id) {
+      return db.prepare('SELECT * FROM seating_tables WHERE id = :id').get({ id }) || null;
+    },
+
+    // Full replace: omitting `name` clears it. Callers doing partial updates
+    // must read the current row first.
+    updateSeatingTable(id, { table_number, name = null }) {
+      return db.prepare(
+        'UPDATE seating_tables SET table_number = :table_number, name = :name WHERE id = :id'
+      ).run({ id, table_number, name });
+    },
+
+    deleteSeatingTable(id) {
+      return db.prepare('DELETE FROM seating_tables WHERE id = :id').run({ id });
+    },
+
+    // ── seating_assignments
+    createSeatingAssignment({ table_id, rsvp_attendee_id = null, guest_name = null }) {
+      const next = db.prepare(
+        'SELECT COALESCE(MAX(position), -1) + 1 AS next_pos FROM seating_assignments WHERE table_id = :table_id'
+      ).get({ table_id }).next_pos;
+      const result = db.prepare(`
+        INSERT INTO seating_assignments (table_id, rsvp_attendee_id, guest_name, position)
+        VALUES (:table_id, :rsvp_attendee_id, :guest_name, :position)
+      `).run({ table_id, rsvp_attendee_id, guest_name, position: next });
+      return { id: Number(result.lastInsertRowid) };
+    },
+
+    deleteSeatingAssignment(id) {
+      return db.prepare('DELETE FROM seating_assignments WHERE id = :id').run({ id });
+    },
+
+    getSeatingTablesWithAssignments() {
+      const tables = db.prepare('SELECT * FROM seating_tables ORDER BY table_number ASC').all();
+      if (tables.length === 0) return [];
+      const rows = db.prepare(`
+        SELECT sa.id, sa.table_id, sa.position, sa.rsvp_attendee_id,
+               COALESCE(sa.guest_name, ra.name) AS display_name
+        FROM seating_assignments sa
+        LEFT JOIN rsvp_attendees ra ON ra.id = sa.rsvp_attendee_id
+        ORDER BY sa.table_id, sa.position
+      `).all();
+      const grouped = new Map(tables.map(t => [t.id, []]));
+      for (const r of rows) {
+        if (!grouped.has(r.table_id)) continue;
+        grouped.get(r.table_id).push({
+          id: r.id,
+          display_name: r.display_name,
+          rsvp_attendee_id: r.rsvp_attendee_id,
+          position: r.position,
+        });
+      }
+      // Alphabetical for guests scanning without a search box; position breaks ties.
+      for (const list of grouped.values()) {
+        list.sort((a, b) =>
+          a.display_name.localeCompare(b.display_name, 'nl', { sensitivity: 'base' })
+          || a.position - b.position);
+      }
+      return tables.map(t => ({
+        id: t.id,
+        table_number: t.table_number,
+        name: t.name,
+        assignments: grouped.get(t.id),
+      }));
+    },
+
+    // Seats are freed by attendee-row deletion: cancelling an RSVP reconciles the
+    // party to zero rows and the FK cascade removes the assignments, and the same
+    // holds when an invite is released. rsvps.event_type is locked at the route
+    // (src/routes/rsvp.js), so a guest cannot downgrade full -> evening/ceremony
+    // and strand a seat here.
+    getUnseatedAttendees() {
+      return db.prepare(`
+        SELECT ra.id AS rsvp_attendee_id, ra.name AS name, r.name AS party_name
+        FROM rsvp_attendees ra
+        JOIN rsvps r ON r.id = ra.rsvp_id
+        WHERE r.attending = 1
+          AND r.event_type = 'full'
+          AND NOT EXISTS (
+            SELECT 1 FROM seating_assignments sa WHERE sa.rsvp_attendee_id = ra.id
+          )
+        ORDER BY r.name, ra.position
+      `).all();
+    },
+
+    // Write-side counterpart to getUnseatedAttendees: same "dinner guest"
+    // predicate, so an attendee that never appears in the unseated list can
+    // never be seated through the API either.
+    getSeatableAttendeeById(id) {
+      return db.prepare(`
+        SELECT ra.*
+        FROM rsvp_attendees ra
+        JOIN rsvps r ON r.id = ra.rsvp_id
+        WHERE ra.id = :id AND r.attending = 1 AND r.event_type = 'full'
+      `).get({ id }) || null;
+    },
+
+    // ── app_settings
+    getSetting(key) {
+      return getSetting(key);
+    },
+
+    setSetting(key, value) {
+      return db.prepare(`
+        INSERT INTO app_settings (key, value) VALUES (:key, :value)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+      `).run({ key, value: String(value) });
+    },
+
+    isSeatingPublished() {
+      return getSetting('seating_published') === '1';
     },
 
     // ── registry_items
@@ -599,6 +813,14 @@ function initDb(path = 'rsvps.db') {
         throw new Error(`_tableInfo: invalid table name ${name}`);
       }
       return db.prepare(`PRAGMA table_info(${name})`).all();
+    },
+    // Test-only: run an arbitrary query. Do not use in production code.
+    _rawAll(sql, ...params) {
+      return db.prepare(sql).all(...params);
+    },
+    // Test-only: run an arbitrary statement. Do not use in production code.
+    _rawRun(sql, ...params) {
+      return db.prepare(sql).run(...params);
     },
     // Test-only: raw DatabaseSync handle. Do not use in production code.
     _raw: db,

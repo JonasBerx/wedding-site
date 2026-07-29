@@ -4,3 +4,4 @@ rsvps.db
 dist/
 server.log
 /media/
+.harness/
