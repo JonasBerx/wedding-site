@@ -44,7 +44,7 @@ function mutations(apiFetch) {
 
 /** Each table card has its own "+" button; scope to the one next to that table's input. */
 function extraGuestControls(tableNumber) {
-  const input = screen.getByLabelText(`Extra gast voor tafel ${tableNumber}`);
+  const input = screen.getByLabelText(`Extra guest for table ${tableNumber}`);
   return { input, plus: input.parentElement.querySelector('button') };
 }
 
@@ -59,16 +59,16 @@ async function renderTab(props = {}) {
 describe('SeatingAdminTab — rendering', () => {
   test('renders each table with its assignments', async () => {
     await renderTab();
-    expect(screen.getByText('Tafel 01')).toBeInTheDocument();
+    expect(screen.getByText('Table 01')).toBeInTheDocument();
     expect(screen.getByText('Olijf')).toBeInTheDocument();
-    expect(screen.getByText('Tafel 02')).toBeInTheDocument();
+    expect(screen.getByText('Table 02')).toBeInTheDocument();
     expect(screen.getByText('Anne Van Damme')).toBeInTheDocument();
     expect(screen.getByText('Bram Peeters')).toBeInTheDocument();
   });
 
   test('renders the unseated list with its count', async () => {
     await renderTab();
-    expect(screen.getByText(/Nog niet ingedeeld · 2/)).toBeInTheDocument();
+    expect(screen.getByText(/Not seated yet · 2/)).toBeInTheDocument();
     expect(screen.getByText('Clara Janssens')).toBeInTheDocument();
     expect(screen.getByText('Familie Janssens')).toBeInTheDocument();
     expect(screen.getByText('Dries Maes')).toBeInTheDocument();
@@ -77,8 +77,8 @@ describe('SeatingAdminTab — rendering', () => {
   test('shows the all-seated message when nobody is unseated', async () => {
     const apiFetch = mockApiFetch({ ...clone(SEATING), unseated: [] });
     render(<SeatingAdminTab apiFetch={apiFetch} />);
-    expect(await screen.findByText('Iedereen heeft een plaats.')).toBeInTheDocument();
-    expect(screen.getByText(/Nog niet ingedeeld · 0/)).toBeInTheDocument();
+    expect(await screen.findByText('Everyone has a seat.')).toBeInTheDocument();
+    expect(screen.getByText(/Not seated yet · 0/)).toBeInTheDocument();
   });
 
   test('loads once on mount even though the host passes a new apiFetch identity', async () => {
@@ -97,7 +97,7 @@ describe('SeatingAdminTab — seating a guest', () => {
     const { apiFetch } = await renderTab();
     apiFetch.mockClear();
 
-    fireEvent.change(screen.getByLabelText('Tafel voor Clara Janssens'), { target: { value: '11' } });
+    fireEvent.change(screen.getByLabelText('Table for Clara Janssens'), { target: { value: '11' } });
 
     await waitFor(() => expect(mutations(apiFetch)).toHaveLength(1));
     const [path, creds, options] = mutations(apiFetch)[0];
@@ -112,7 +112,7 @@ describe('SeatingAdminTab — seating a guest', () => {
 
   test('the table dropdown returns to the placeholder after use', async () => {
     await renderTab();
-    const select = screen.getByLabelText('Tafel voor Dries Maes');
+    const select = screen.getByLabelText('Table for Dries Maes');
     fireEvent.change(select, { target: { value: '10' } });
     await waitFor(() => expect(select.value).toBe(''));
   });
@@ -120,7 +120,7 @@ describe('SeatingAdminTab — seating a guest', () => {
   test('choosing the placeholder option fires no request', async () => {
     const { apiFetch } = await renderTab();
     apiFetch.mockClear();
-    fireEvent.change(screen.getByLabelText('Tafel voor Clara Janssens'), { target: { value: '' } });
+    fireEvent.change(screen.getByLabelText('Table for Clara Janssens'), { target: { value: '' } });
     expect(mutations(apiFetch)).toHaveLength(0);
   });
 });
@@ -130,7 +130,7 @@ describe('SeatingAdminTab — unseating', () => {
     const { apiFetch } = await renderTab();
     apiFetch.mockClear();
 
-    fireEvent.click(screen.getByLabelText('Verwijder Bram Peeters'));
+    fireEvent.click(screen.getByLabelText('Remove Bram Peeters'));
 
     await waitFor(() => expect(mutations(apiFetch)).toHaveLength(1));
     const [path, creds, options] = mutations(apiFetch)[0];
@@ -151,7 +151,7 @@ describe('SeatingAdminTab — unseating', () => {
     render(<SeatingAdminTab apiFetch={apiFetch} onToast={onToast} />);
     await screen.findByText('Anne Van Damme');
 
-    fireEvent.click(screen.getByLabelText('Verwijder Anne Van Damme'));
+    fireEvent.click(screen.getByLabelText('Remove Anne Van Damme'));
 
     await waitFor(() => expect(mutations(apiFetch)).toHaveLength(1));
     expect(onToast).not.toHaveBeenCalled();
@@ -212,10 +212,10 @@ describe('SeatingAdminTab — extra guests', () => {
 describe('SeatingAdminTab — publishing', () => {
   test('PUTs true when currently hidden', async () => {
     const { apiFetch } = await renderTab();
-    expect(screen.getByText('Verborgen voor gasten')).toBeInTheDocument();
+    expect(screen.getByText('Hidden from guests')).toBeInTheDocument();
     apiFetch.mockClear();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Publiceren' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Publish' }));
 
     await waitFor(() => expect(mutations(apiFetch)).toHaveLength(1));
     const [path, , options] = mutations(apiFetch)[0];
@@ -224,27 +224,27 @@ describe('SeatingAdminTab — publishing', () => {
     expect(JSON.parse(options.body)).toEqual({ published: true });
   });
 
-  test('PUTs false when currently published, and labels the button Verbergen', async () => {
+  test('PUTs false when currently published, and labels the button Hide', async () => {
     const apiFetch = mockApiFetch({ ...clone(SEATING), published: true });
     render(<SeatingAdminTab apiFetch={apiFetch} />);
-    await screen.findByText('Zichtbaar voor gasten');
+    await screen.findByText('Visible to guests');
     apiFetch.mockClear();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Verbergen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Hide' }));
 
     await waitFor(() => expect(mutations(apiFetch)).toHaveLength(1));
     expect(JSON.parse(mutations(apiFetch)[0][2].body)).toEqual({ published: false });
   });
 
-  test('toasts the Dutch success message', async () => {
+  test('toasts the success message', async () => {
     const onToast = vi.fn();
     const apiFetch = mockApiFetch();
     render(<SeatingAdminTab apiFetch={apiFetch} onToast={onToast} />);
     await screen.findByText('Anne Van Damme');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Publiceren' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Publish' }));
 
-    await waitFor(() => expect(onToast).toHaveBeenCalledWith('Tafelschikking gepubliceerd'));
+    await waitFor(() => expect(onToast).toHaveBeenCalledWith('Seating chart published'));
   });
 });
 
@@ -252,12 +252,12 @@ describe('SeatingAdminTab — creating a table', () => {
   test('POSTs the parsed number and trimmed name, then clears the form', async () => {
     const { apiFetch } = await renderTab();
     apiFetch.mockClear();
-    const number = screen.getByLabelText('Nummer');
-    const name = screen.getByLabelText('Naam (optioneel)');
+    const number = screen.getByLabelText('Number');
+    const name = screen.getByLabelText('Name (optional)');
 
     fireEvent.change(number, { target: { value: '7' } });
     fireEvent.change(name, { target: { value: ' Beuk ' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Tafel toevoegen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add table' }));
 
     await waitFor(() => expect(mutations(apiFetch)).toHaveLength(1));
     const [path, , options] = mutations(apiFetch)[0];
@@ -271,8 +271,8 @@ describe('SeatingAdminTab — creating a table', () => {
   test('sends null when no name is given', async () => {
     const { apiFetch } = await renderTab();
     apiFetch.mockClear();
-    fireEvent.change(screen.getByLabelText('Nummer'), { target: { value: '3' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Tafel toevoegen' }));
+    fireEvent.change(screen.getByLabelText('Number'), { target: { value: '3' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add table' }));
 
     await waitFor(() => expect(mutations(apiFetch)).toHaveLength(1));
     expect(JSON.parse(mutations(apiFetch)[0][2].body)).toEqual({ table_number: 3, name: null });
@@ -285,16 +285,16 @@ describe('SeatingAdminTab — creating a table', () => {
     await screen.findByText('Anne Van Damme');
     apiFetch.mockClear();
 
-    fireEvent.change(screen.getByLabelText('Nummer'), { target: { value: 'abc' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Tafel toevoegen' }));
+    fireEvent.change(screen.getByLabelText('Number'), { target: { value: 'abc' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add table' }));
 
-    await waitFor(() => expect(onToast).toHaveBeenCalledWith('invalid_table_number'));
+    await waitFor(() => expect(onToast).toHaveBeenCalledWith('A table number has to be a whole number, 1 or higher.'));
     expect(mutations(apiFetch)).toHaveLength(0);
   });
 });
 
 describe('SeatingAdminTab — failures', () => {
-  test("surfaces the server's error string and keeps the input", async () => {
+  test('maps a known server error code to a sentence and keeps the input', async () => {
     const onToast = vi.fn();
     const apiFetch = vi.fn(async (path) => {
       if (path === '/api/admin/seating') {
@@ -309,7 +309,7 @@ describe('SeatingAdminTab — failures', () => {
     fireEvent.change(input, { target: { value: 'Nonkel Piet' } });
     fireEvent.click(plus);
 
-    await waitFor(() => expect(onToast).toHaveBeenCalledWith('already_seated'));
+    await waitFor(() => expect(onToast).toHaveBeenCalledWith('That guest already has a seat — refresh to see the current chart.'));
     expect(input.value).toBe('Nonkel Piet');
   });
 
@@ -324,16 +324,16 @@ describe('SeatingAdminTab — failures', () => {
     render(<SeatingAdminTab apiFetch={apiFetch} onToast={onToast} />);
     await screen.findByText('Anne Van Damme');
 
-    fireEvent.click(screen.getByLabelText('Verwijder Anne Van Damme'));
+    fireEvent.click(screen.getByLabelText('Remove Anne Van Damme'));
 
-    await waitFor(() => expect(onToast).toHaveBeenCalledWith('Er ging iets mis'));
+    await waitFor(() => expect(onToast).toHaveBeenCalledWith('Something went wrong. Please try again.'));
   });
 
   test('survives a 200 response with a partial body', async () => {
     const onToast = vi.fn();
     const apiFetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({}) }));
     render(<SeatingAdminTab apiFetch={apiFetch} onToast={onToast} />);
-    expect(await screen.findByText('Iedereen heeft een plaats.')).toBeInTheDocument();
+    expect(await screen.findByText('Everyone has a seat.')).toBeInTheDocument();
     expect(onToast).not.toHaveBeenCalled();
   });
 
@@ -344,7 +344,7 @@ describe('SeatingAdminTab — failures', () => {
     }));
     render(<SeatingAdminTab apiFetch={apiFetch} onToast={onToast} />);
     await waitFor(() =>
-      expect(onToast).toHaveBeenCalledWith('Tafelschikking kon niet geladen worden'));
+      expect(onToast).toHaveBeenCalledWith('Could not load the seating chart.'));
   });
 
   test('does not refetch after a failed mutation', async () => {
@@ -353,7 +353,7 @@ describe('SeatingAdminTab — failures', () => {
     await screen.findByText('Anne Van Damme');
     apiFetch.mockClear();
 
-    fireEvent.click(screen.getByLabelText('Verwijder Anne Van Damme'));
+    fireEvent.click(screen.getByLabelText('Remove Anne Van Damme'));
 
     await waitFor(() => expect(mutations(apiFetch)).toHaveLength(1));
     expect(apiFetch.mock.calls.filter(([p]) => p === '/api/admin/seating')).toHaveLength(0);
@@ -368,7 +368,7 @@ describe('SeatingAdminTab — deleting a table', () => {
     await screen.findByText('Anne Van Damme');
     apiFetch.mockClear();
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Verwijderen' })[0]);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Delete' })[0]);
 
     expect(onConfirmDeleteTable).toHaveBeenCalledTimes(1);
     expect(onConfirmDeleteTable.mock.calls[0][0]).toMatchObject({ id: 10, table_number: 1, name: 'Olijf' });
@@ -377,7 +377,179 @@ describe('SeatingAdminTab — deleting a table', () => {
 
   test('does not crash when no onConfirmDeleteTable handler is supplied', async () => {
     await renderTab();
-    fireEvent.click(screen.getAllByRole('button', { name: 'Verwijderen' })[1]);
-    expect(screen.getByText('Tafel 02')).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole('button', { name: 'Delete' })[1]);
+    expect(screen.getByText('Table 02')).toBeInTheDocument();
+  });
+});
+
+describe('SeatingAdminTab — load failures', () => {
+  // A silent return here used to render "Everyone has a seat." over zero tables,
+  // which reads exactly like a genuinely empty, fully-seated chart.
+  test('toasts when the seating load comes back non-OK', async () => {
+    const onToast = vi.fn();
+    const apiFetch = vi.fn(async () => ({ ok: false, status: 500, json: async () => ({}) }));
+    render(<SeatingAdminTab apiFetch={apiFetch} onToast={onToast} />);
+    await waitFor(() =>
+      expect(onToast).toHaveBeenCalledWith('Could not load the seating chart.'));
+  });
+
+  test('does not claim everyone is seated after a failed load', async () => {
+    const apiFetch = vi.fn(async () => ({ ok: false, status: 500, json: async () => ({}) }));
+    render(<SeatingAdminTab apiFetch={apiFetch} onToast={vi.fn()} />);
+    await waitFor(() => expect(apiFetch).toHaveBeenCalled());
+    expect(screen.queryByText('Everyone has a seat.')).toBeNull();
+  });
+
+  test('forwards a 401 to onAuthExpired instead of toasting', async () => {
+    const onToast = vi.fn();
+    const onAuthExpired = vi.fn();
+    const apiFetch = vi.fn(async () => ({ ok: false, status: 401, json: async () => ({}) }));
+    render(<SeatingAdminTab apiFetch={apiFetch} onToast={onToast} onAuthExpired={onAuthExpired} />);
+    await waitFor(() => expect(onAuthExpired).toHaveBeenCalledTimes(1));
+    expect(onToast).not.toHaveBeenCalled();
+  });
+
+  test('forwards a 401 on a mutation to onAuthExpired', async () => {
+    const onToast = vi.fn();
+    const onAuthExpired = vi.fn();
+    const apiFetch = vi.fn(async (path) => {
+      if (path === '/api/admin/seating') {
+        return { ok: true, status: 200, json: async () => clone(SEATING) };
+      }
+      return { ok: false, status: 401, json: async () => ({}) };
+    });
+    render(<SeatingAdminTab apiFetch={apiFetch} onToast={onToast} onAuthExpired={onAuthExpired} />);
+    await screen.findByText('Anne Van Damme');
+
+    fireEvent.click(screen.getByLabelText('Remove Anne Van Damme'));
+
+    await waitFor(() => expect(onAuthExpired).toHaveBeenCalledTimes(1));
+    expect(onToast).not.toHaveBeenCalled();
+  });
+
+  test('does not crash on a 401 when the host passes no onAuthExpired', async () => {
+    const onToast = vi.fn();
+    const apiFetch = vi.fn(async () => ({ ok: false, status: 401, json: async () => ({}) }));
+    render(<SeatingAdminTab apiFetch={apiFetch} onToast={onToast} />);
+    await waitFor(() => expect(apiFetch).toHaveBeenCalled());
+    expect(onToast).not.toHaveBeenCalled();
+  });
+});
+
+describe('SeatingAdminTab — error messages', () => {
+  function failWith(error) {
+    return vi.fn(async (path) => {
+      if (path === '/api/admin/seating') {
+        return { ok: true, status: 200, json: async () => clone(SEATING) };
+      }
+      return { ok: false, status: 409, json: async () => ({ error }) };
+    });
+  }
+
+  async function toastFor(error) {
+    const onToast = vi.fn();
+    render(<SeatingAdminTab apiFetch={failWith(error)} onToast={onToast} />);
+    await screen.findByText('Anne Van Damme');
+    fireEvent.click(screen.getByLabelText('Remove Anne Van Damme'));
+    await waitFor(() => expect(onToast).toHaveBeenCalled());
+    return onToast.mock.calls[0][0];
+  }
+
+  // Every code the API can return has to arrive as a sentence, never as an
+  // identifier the couple has to decode.
+  const CODES = [
+    'table_number_taken', 'already_seated', 'invalid_table_number',
+    'invalid_table_name', 'invalid_guest_name', 'attendee_not_found',
+    'table_not_found', 'assignment_not_found', 'invalid_assignment_target',
+  ];
+
+  test.each(CODES)('maps %s to a human sentence', async (code) => {
+    const message = await toastFor(code);
+    expect(message).not.toBe(code);
+    expect(message).not.toMatch(/_/);
+    expect(message).toMatch(/[.!]$/);
+  });
+
+  test('falls back to a generic sentence for an unknown code', async () => {
+    expect(await toastFor('some_code_we_never_wrote')).toBe('Something went wrong. Please try again.');
+  });
+
+  test('falls back to a generic sentence when the body has no error at all', async () => {
+    expect(await toastFor(undefined)).toBe('Something went wrong. Please try again.');
+  });
+});
+
+describe('SeatingAdminTab — extra guest double-submit', () => {
+  /** apiFetch whose mutations hang until `release()` is called. */
+  function gatedApiFetch() {
+    let release;
+    const gate = new Promise(resolve => { release = resolve; });
+    const apiFetch = vi.fn(async (path) => {
+      if (path === '/api/admin/seating') {
+        return { ok: true, status: 200, json: async () => clone(SEATING) };
+      }
+      await gate;
+      return { ok: true, status: 204, json: async () => ({}) };
+    });
+    return { apiFetch, release: () => release() };
+  }
+
+  // Linked attendees are protected by a unique index; the manual path is not,
+  // so two fast clicks used to put the same name on the chart twice.
+  test('a second click while the first is in flight sends nothing', async () => {
+    const { apiFetch, release } = gatedApiFetch();
+    render(<SeatingAdminTab apiFetch={apiFetch} onToast={vi.fn()} />);
+    await screen.findByText('Anne Van Damme');
+    apiFetch.mockClear();
+    const { input, plus } = extraGuestControls(1);
+
+    fireEvent.change(input, { target: { value: 'Nonkel Piet' } });
+    fireEvent.click(plus);
+    fireEvent.click(plus);
+    fireEvent.click(plus);
+
+    await waitFor(() => expect(mutations(apiFetch)).toHaveLength(1));
+    expect(plus).toBeDisabled();
+
+    release();
+    await waitFor(() => expect(input.value).toBe(''));
+    expect(mutations(apiFetch)).toHaveLength(1);
+  });
+
+  test('Enter is ignored while a submit is in flight', async () => {
+    const { apiFetch, release } = gatedApiFetch();
+    render(<SeatingAdminTab apiFetch={apiFetch} onToast={vi.fn()} />);
+    await screen.findByText('Anne Van Damme');
+    apiFetch.mockClear();
+    const { input } = extraGuestControls(1);
+
+    fireEvent.change(input, { target: { value: 'Nonkel Piet' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() => expect(mutations(apiFetch)).toHaveLength(1));
+
+    release();
+    await waitFor(() => expect(input.value).toBe(''));
+    expect(mutations(apiFetch)).toHaveLength(1);
+  });
+
+  test('the button works again once the first submit settles', async () => {
+    const { apiFetch, release } = gatedApiFetch();
+    render(<SeatingAdminTab apiFetch={apiFetch} onToast={vi.fn()} />);
+    await screen.findByText('Anne Van Damme');
+    apiFetch.mockClear();
+    const { input, plus } = extraGuestControls(1);
+
+    fireEvent.change(input, { target: { value: 'Nonkel Piet' } });
+    fireEvent.click(plus);
+    release();
+    await waitFor(() => expect(plus).not.toBeDisabled());
+
+    fireEvent.change(input, { target: { value: 'Tante Mia' } });
+    fireEvent.click(plus);
+    await waitFor(() => expect(mutations(apiFetch)).toHaveLength(2));
+    expect(JSON.parse(mutations(apiFetch)[1][2].body))
+      .toEqual({ table_id: 10, guest_name: 'Tante Mia' });
   });
 });

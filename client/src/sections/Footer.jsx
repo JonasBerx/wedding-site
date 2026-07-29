@@ -1,13 +1,22 @@
+import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { OliveBranch } from '../botanicals';
 import { useIsMobile } from '../shared';
 
+// The standalone pages guests are meant to find on their own. Whichever one you
+// are already on drops out of the row and is replaced by the way back.
+const SIDE_PAGES = [
+  { to: '/registry', text: 'Gift Registry' },
+  { to: '/seating', text: 'Seating Chart' },
+];
+
 function FooterSection({ t, fonts }) {
   const isMobile = useIsMobile();
   const { pathname } = useLocation();
-  const onRegistry = pathname === '/registry';
-  const linkTo = onRegistry ? '/' : '/registry';
-  const linkText = onRegistry ? '← back to the wedding' : 'Gift Registry';
+  const onSidePage = SIDE_PAGES.some(p => p.to === pathname);
+  const links = onSidePage
+    ? [{ to: '/', text: '← back to the wedding' }, ...SIDE_PAGES.filter(p => p.to !== pathname)]
+    : SIDE_PAGES;
 
   return (
     <footer style={{
@@ -28,13 +37,23 @@ function FooterSection({ t, fonts }) {
         marginTop: 32, fontFamily: fonts.label, fontSize: isMobile ? 10 : 11, letterSpacing: '0.4em',
         color: t.label, textTransform: 'uppercase',
       }}>VIII · VIII · MMXXVI</div>
-      <div style={{ marginTop: 28 }}>
-        <Link to={linkTo} style={{
-          fontFamily: fonts.label, fontSize: isMobile ? 10 : 11, letterSpacing: '0.32em',
-          color: t.label, textTransform: 'uppercase', textDecoration: 'none', opacity: 0.7,
-        }}>
-          {linkText}
-        </Link>
+      <div style={{
+        marginTop: 28, display: 'flex', justifyContent: 'center',
+        alignItems: 'center', gap: isMobile ? 14 : 22, flexWrap: 'wrap',
+      }}>
+        {links.map((link, i) => (
+          <React.Fragment key={link.to}>
+            {i > 0 && (
+              <span aria-hidden="true" style={{ color: t.label, opacity: 0.35, fontSize: 11 }}>·</span>
+            )}
+            <Link to={link.to} style={{
+              fontFamily: fonts.label, fontSize: isMobile ? 10 : 11, letterSpacing: '0.32em',
+              color: t.label, textTransform: 'uppercase', textDecoration: 'none', opacity: 0.7,
+            }}>
+              {link.text}
+            </Link>
+          </React.Fragment>
+        ))}
       </div>
     </footer>
   );

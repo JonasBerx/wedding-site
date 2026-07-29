@@ -273,6 +273,14 @@ export default function AdminDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Shared by loadData and by any tab that meets a 401 of its own, so an expired
+  // session always lands in the same place instead of failing silently.
+  function handleAuthExpired() {
+    setAuth(null);
+    try { localStorage.removeItem(AUTH_STORAGE_KEY); } catch {}
+    setAuthError('Session expired. Please log in again.');
+  }
+
   async function loadData(creds) {
     const [rsvpsRes, regRes, menuRes, mealCountsRes, invitesRes] = await Promise.all([
       apiFetch('/api/admin/rsvps', creds),
@@ -282,9 +290,7 @@ export default function AdminDashboard() {
       apiFetch('/api/admin/invites', creds),
     ]);
     if (rsvpsRes.status === 401) {
-      setAuth(null);
-      try { localStorage.removeItem(AUTH_STORAGE_KEY); } catch {}
-      setAuthError('Session expired. Please log in again.');
+      handleAuthExpired();
       return;
     }
     setRsvps(await rsvpsRes.json());
@@ -922,6 +928,7 @@ export default function AdminDashboard() {
             apiFetch={apiFetch}
             onToast={setToast}
             onConfirmDeleteTable={setPendingTableDelete}
+            onAuthExpired={handleAuthExpired}
           />
         )}
 
@@ -969,12 +976,11 @@ export default function AdminDashboard() {
       <ConfirmModal
         open={!!pendingTableDelete}
         destructive
-        title="Tafel verwijderen?"
+        title="Delete this table?"
         body={pendingTableDelete
-          ? `Tafel ${pendingTableDelete.table_number} en alle plaatsen aan die tafel worden verwijderd.`
+          ? `Table ${pendingTableDelete.table_number} and every seat at it will be deleted.`
           : ''}
-        confirmLabel="Verwijderen"
-        cancelLabel="Annuleren"
+        confirmLabel="Delete"
         onCancel={() => setPendingTableDelete(null)}
         onConfirm={async () => {
           const res = await apiFetch(
@@ -982,7 +988,7 @@ export default function AdminDashboard() {
             undefined,
             { method: 'DELETE' },
           );
-          setToast(res.ok ? 'Tafel verwijderd' : 'Verwijderen mislukt');
+          setToast(res.ok ? 'Table deleted' : 'Could not delete the table.');
           setPendingTableDelete(null);
           setSeatingNonce(n => n + 1);
         }}

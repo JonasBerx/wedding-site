@@ -97,7 +97,7 @@ describe('AdminDashboard — seating tab', () => {
     const tabButton = await screen.findByRole('button', { name: 'SEATING' });
     fireEvent.click(tabButton);
     // The panel is there once the seating fetch has resolved.
-    await screen.findByText('Tafel 01');
+    await screen.findByText('Table 01');
     return tabButton;
   }
 
@@ -113,7 +113,7 @@ describe('AdminDashboard — seating tab', () => {
     await openSeating();
     expect(screen.getByText('Olijf')).toBeInTheDocument();
     expect(screen.getByText('Anne Van Damme')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Tafel toevoegen' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add table' })).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith('/api/admin/seating', expect.anything());
   });
 
@@ -121,12 +121,12 @@ describe('AdminDashboard — seating tab', () => {
     await openSeating();
 
     // Only the table card's button exists at this point.
-    fireEvent.click(screen.getByRole('button', { name: 'Verwijderen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
 
     // The host owns the dialog; it names the table being removed.
-    expect(await screen.findByText('Tafel verwijderen?')).toBeInTheDocument();
+    expect(await screen.findByText('Delete this table?')).toBeInTheDocument();
     expect(
-      screen.getByText('Tafel 1 en alle plaatsen aan die tafel worden verwijderd.'),
+      screen.getByText('Table 1 and every seat at it will be deleted.'),
     ).toBeInTheDocument();
 
     const seatingLoadsBefore = fetchMock.mock.calls.filter(
@@ -135,9 +135,9 @@ describe('AdminDashboard — seating tab', () => {
 
     // Now there are two: the card's button and the dialog's confirm. The dialog
     // is rendered last, so it is the second one.
-    const verwijderen = screen.getAllByRole('button', { name: 'Verwijderen' });
-    expect(verwijderen).toHaveLength(2);
-    fireEvent.click(verwijderen[1]);
+    const deleteButtons = screen.getAllByRole('button', { name: 'Delete' });
+    expect(deleteButtons).toHaveLength(2);
+    fireEvent.click(deleteButtons[1]);
 
     await waitFor(() => {
       expect(
@@ -152,24 +152,24 @@ describe('AdminDashboard — seating tab', () => {
 
     // The dialog closes, the toast shows, and the tab remounts and refetches.
     await waitFor(() => {
-      expect(screen.queryByText('Tafel verwijderen?')).not.toBeInTheDocument();
+      expect(screen.queryByText('Delete this table?')).not.toBeInTheDocument();
     });
-    expect(await screen.findByText('Tafel verwijderd')).toBeInTheDocument();
+    expect(await screen.findByText('Table deleted')).toBeInTheDocument();
     await waitFor(() => {
       const after = fetchMock.mock.calls.filter(([p]) => p === '/api/admin/seating').length;
       expect(after).toBeGreaterThan(seatingLoadsBefore);
     });
     // The toast survives the remount.
-    expect(screen.getByText('Tafel verwijderd')).toBeInTheDocument();
+    expect(screen.getByText('Table deleted')).toBeInTheDocument();
   });
 
   test('cancelling the delete dialog fires no request', async () => {
     await openSeating();
-    fireEvent.click(screen.getByRole('button', { name: 'Verwijderen' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Annuleren' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }));
 
     await waitFor(() => {
-      expect(screen.queryByText('Tafel verwijderen?')).not.toBeInTheDocument();
+      expect(screen.queryByText('Delete this table?')).not.toBeInTheDocument();
     });
     expect(fetchMock.mock.calls.some(([p]) => p.startsWith('/api/admin/seating/tables'))).toBe(false);
   });
