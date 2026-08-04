@@ -174,3 +174,147 @@ describe('AdminDashboard — seating tab', () => {
     expect(fetchMock.mock.calls.some(([p]) => p.startsWith('/api/admin/seating/tables'))).toBe(false);
   });
 });
+
+const RENAME_RSVPS = [
+  {
+    id: 7,
+    name: 'Ana',
+    email: 'ana@example.com',
+    attending: 1,
+    event_type: 'full',
+    dietary_restrictions: null,
+    song: null,
+    submitted_at: '2026-05-01T10:00:00.000',
+    attendees: [
+      { id: 71, position: 1, name: 'Ana', first_course_name: 'Tomato', main_course_name: 'Lamb', dietary_restrictions: null },
+      { id: 72, position: 2, name: 'Bram', first_course_name: 'Tomato', main_course_name: 'Lamb', dietary_restrictions: null },
+    ],
+  },
+];
+
+// Mirrors the server's linkage: renaming the lead (or attendee 1) moves both.
+function mockRenameApi({ patchOk = true } = {}) {
+  return vi.fn(async (path, init = {}) => {
+    if (init.method === 'PATCH') {
+      if (!patchOk) return { ok: false, status: 500, json: async () => ({ error: 'boom' }) };
+      const { name } = JSON.parse(init.body);
+      const rsvp = JSON.parse(JSON.stringify(RENAME_RSVPS[0]));
+      if (path === '/api/admin/rsvps/7') {
+        rsvp.name = name;
+        rsvp.attendees[0].name = name;
+      } else {
+        const a = rsvp.attendees.find(x => path === `/api/admin/rsvps/7/attendees/${x.id}`);
+        a.name = name;
+        if (a.position === 1) rsvp.name = name;
+      }
+      return { ok: true, status: 200, json: async () => ({ rsvp }) };
+    }
+    return {
+      ok: true,
+      status: 200,
+      json: async () => {
+        if (path === '/api/admin/rsvps') return JSON.parse(JSON.stringify(RENAME_RSVPS));
+        if (path === '/api/admin/invites') return { invites: [] };
+        return [];
+      },
+    };
+  });
+}
+
+describe('AdminDashboard — renaming guests', () => {
+  let fetchMock;
+
+  beforeEach(() => {
+    localStorage.setItem('weddingAdminAuth', 'dGVzdDp0ZXN0');
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    vi.unstubAllGlobals();
+  });
+
+  function mount(opts) {
+    fetchMock = mockRenameApi(opts);
+    vi.stubGlobal('fetch', fetchMock);
+    render(<AdminDashboard />);
+  }
+
+  test('clicking a name cell opens an input holding the current name', async () => {
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Lead name' }));
+    expect(screen.getByRole('textbox', { name: 'Lead name' })).toHaveValue('Ana');
+  });
+
+  test('Enter PATCHes the lead and updates both the lead and attendee 1', async () => {
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Lead name' }));
+    const input = screen.getByRole('textbox', { name: 'Lead name' });
+    fireEvent.change(input, { target: { value: 'Anna Peeters' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.some(([p, i]) => p === '/api/admin/rsvps/7' && i?.method === 'PATCH')).toBe(true);
+    });
+    const [, init] = fetchMock.mock.calls.find(([p, i]) => p === '/api/admin/rsvps/7' && i?.method === 'PATCH');
+    expect(JSON.parse(init.body)).toEqual({ name: 'Anna Peeters' });
+
+    // Lead cell and attendee 1 cell both show the new name; attendee 2 is untouched.
+    await waitFor(() => expect(screen.getAllByText('Anna Peeters')).toHaveLength(2));
+    expect(screen.getByText('Bram')).toBeInTheDocument();
+  });
+
+  test('Enter on an attendee cell PATCHes that attendee', async () => {
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Attendee 2 name' }));
+    const input = screen.getByRole('textbox', { name: 'Attendee 2 name' });
+    fireEvent.change(input, { target: { value: 'Bram Peeters' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.some(([p]) => p === '/api/admin/rsvps/7/attendees/72')).toBe(true);
+    });
+    expect(await screen.findByText('Bram Peeters')).toBeInTheDocument();
+    // The lead name did not move.
+    expect(screen.getAllByText('Ana')).toHaveLength(2);
+  });
+
+  test('Escape restores the original name and sends no request', async () => {
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Lead name' }));
+    const input = screen.getByRole('textbox', { name: 'Lead name' });
+    fireEvent.change(input, { target: { value: 'Whoops' } });
+    fireEvent.keyDown(input, { key: 'Escape' });
+
+    await waitFor(() => {
+      expect(screen.queryByRole('textbox', { name: 'Lead name' })).not.toBeInTheDocument();
+    });
+    expect(screen.getAllByText('Ana')).toHaveLength(2);
+    expect(fetchMock.mock.calls.some(([, i]) => i?.method === 'PATCH')).toBe(false);
+  });
+
+  test('an unchanged name closes the cell without a request', async () => {
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Lead name' }));
+    fireEvent.keyDown(screen.getByRole('textbox', { name: 'Lead name' }), { key: 'Enter' });
+
+    await waitFor(() => {
+      expect(screen.queryByRole('textbox', { name: 'Lead name' })).not.toBeInTheDocument();
+    });
+    expect(fetchMock.mock.calls.some(([, i]) => i?.method === 'PATCH')).toBe(false);
+  });
+
+  test('a failed rename reverts the cell and shows a toast', async () => {
+    mount({ patchOk: false });
+    fireEvent.click(await screen.findByRole('button', { name: 'Lead name' }));
+    const input = screen.getByRole('textbox', { name: 'Lead name' });
+    fireEvent.change(input, { target: { value: 'Anna Peeters' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    expect(await screen.findByText('Could not rename.')).toBeInTheDocument();
+    expect(screen.queryByText('Anna Peeters')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Ana')).toHaveLength(2);
+    // Exactly one attempt: closing the cell must not let the unmount blur
+    // re-fire the request with the stale draft.
+    expect(fetchMock.mock.calls.filter(([, i]) => i?.method === 'PATCH')).toHaveLength(1);
+  });
+});
