@@ -93,24 +93,37 @@ function initDb(path = 'rsvps.db') {
   const db = new DatabaseSync(path);
   db.exec('PRAGMA foreign_keys = ON');
 
-  // ── rsvps shape guard. The site has no real RSVPs yet; this is a
-  // destructive reset by design. We drop and rebuild if:
-  //   (a) the legacy single-meal columns are present on rsvps, or
-  //   (b) the rsvp_attendees child table is missing, or
-  //   (c) the previous editable-RSVP markers (updated_at, UNIQUE(email)) are missing.
+  // ── rsvps schema migration. Older databases may predate the
+  // `updated_at` column and/or the `rsvp_attendees` table. These are
+  // migrated in place below (ALTER TABLE / CREATE TABLE IF NOT EXISTS) —
+  // existing guest RSVP data must never be dropped.
   const tableNames = db.prepare(
     "SELECT name FROM sqlite_master WHERE type='table'"
   ).all().map(r => r.name);
   const rsvpCols = tableNames.includes('rsvps')
     ? db.prepare('PRAGMA table_info(rsvps)').all().map(c => c.name)
     : [];
-  const hasLegacyMealCols = rsvpCols.includes('first_course_id') || rsvpCols.includes('main_course_id')
-                         || rsvpCols.includes('is_vegan') || rsvpCols.includes('meal_preference');
   const hasUpdatedAt = rsvpCols.includes('updated_at');
   const hasAttendeesTable = tableNames.includes('rsvp_attendees');
-  if (rsvpCols.length > 0 && (hasLegacyMealCols || !hasUpdatedAt || !hasAttendeesTable)) {
-    db.exec('DROP TABLE IF EXISTS rsvp_attendees');
-    db.exec('DROP TABLE rsvps');
+
+  if (rsvpCols.length > 0 && !hasUpdatedAt) {
+    // Backfill with the current time for pre-existing rows; new rows are
+    // written explicitly by upsertRsvp/touchRsvp going forward.
+    db.exec("ALTER TABLE rsvps ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP");
+  }
+
+  if (!hasAttendeesTable) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS rsvp_attendees (
+        id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+        rsvp_id               INTEGER NOT NULL REFERENCES rsvps(id) ON DELETE CASCADE,
+        position              INTEGER NOT NULL,
+        name                  TEXT NOT NULL,
+        first_course_id       INTEGER REFERENCES menu_items(id),
+        main_course_id        INTEGER REFERENCES menu_items(id),
+        dietary_restrictions  TEXT
+      )
+    `);
   }
 
   db.exec(`
