@@ -7,6 +7,7 @@ import { CountdownSection } from './sections/Countdown';
 import { ScheduleSection } from './sections/Schedule';
 import { VenueSection } from './sections/Venue';
 import { MenuSection } from './sections/Menu';
+import { SeatingSection } from './sections/Seating';
 import { DressCodeSection } from './sections/DressCode';
 import { GallerySection } from './sections/Gallery';
 import { RegistrySection } from './sections/Registry';
@@ -29,6 +30,7 @@ function VariationB({ mode = 'day' }) {
       <ScheduleSection  t={t} fonts={fonts} />
       <VenueSection     t={t} fonts={fonts} />
       <MenuSection      t={t} fonts={fonts} />
+      <SeatingSection   t={t} fonts={fonts} />
       <DressCodeSection t={t} fonts={fonts} />
       <GallerySection   t={t} fonts={fonts} />
       <RegistrySection  t={t} fonts={fonts} />
