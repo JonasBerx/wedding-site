@@ -210,9 +210,12 @@ const RENAME_RSVPS = [
 ];
 
 // Mirrors the server's linkage: renaming the lead (or attendee 1) moves both.
-function mockRenameApi({ patchOk = true } = {}) {
+// `patchRejects` models the transport itself failing (offline, DNS blip) rather
+// than the server answering with an error status.
+function mockRenameApi({ patchOk = true, patchRejects = false } = {}) {
   return vi.fn(async (path, init = {}) => {
     if (init.method === 'PATCH') {
+      if (patchRejects) throw new TypeError('Failed to fetch');
       if (!patchOk) return { ok: false, status: 500, json: async () => ({ error: 'boom' }) };
       const { name } = JSON.parse(init.body);
       const rsvp = JSON.parse(JSON.stringify(RENAME_RSVPS[0]));
@@ -323,6 +326,23 @@ describe('AdminDashboard — renaming guests', () => {
     expect(fetchMock.mock.calls.some(([, i]) => i?.method === 'PATCH')).toBe(false);
   });
 
+  test('blurring the input saves, just like Enter', async () => {
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Lead name: Ana' }));
+    const input = screen.getByRole('textbox', { name: 'Lead name: Ana' });
+    fireEvent.change(input, { target: { value: 'Anna Peeters' } });
+    fireEvent.blur(input);
+
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.some(([p, i]) => p === '/api/admin/rsvps/7' && i?.method === 'PATCH')).toBe(true);
+    });
+    const [, init] = fetchMock.mock.calls.find(([p, i]) => p === '/api/admin/rsvps/7' && i?.method === 'PATCH');
+    expect(JSON.parse(init.body)).toEqual({ name: 'Anna Peeters' });
+    // Lead cell and attendee 1 cell both moved, and blur saved exactly once.
+    await waitFor(() => expect(screen.getAllByText('Anna Peeters')).toHaveLength(2));
+    expect(fetchMock.mock.calls.filter(([, i]) => i?.method === 'PATCH')).toHaveLength(1);
+  });
+
   test('a failed rename reverts the cell and shows a toast', async () => {
     mount({ patchOk: false });
     fireEvent.click(await screen.findByRole('button', { name: 'Lead name: Ana' }));
@@ -333,8 +353,98 @@ describe('AdminDashboard — renaming guests', () => {
     expect(await screen.findByText('Could not rename.')).toBeInTheDocument();
     expect(screen.queryByText('Anna Peeters')).not.toBeInTheDocument();
     expect(screen.getAllByText('Ana')).toHaveLength(2);
-    // Exactly one attempt: closing the cell must not let the unmount blur
-    // re-fire the request with the stale draft.
+    // Exactly one attempt: the failure is not retried, and closing the cell
+    // does not re-send it. (This does not exercise the suppressBlur guard —
+    // jsdom fires no blur when a focused element is removed from the DOM. The
+    // guard matters in real browsers; the blur-saves test above covers the
+    // blur path itself.)
+    expect(fetchMock.mock.calls.filter(([, i]) => i?.method === 'PATCH')).toHaveLength(1);
+  });
+
+  test('a rejected fetch toasts, reverts, and leaves the cell usable', async () => {
+    mount({ patchRejects: true });
+    fireEvent.click(await screen.findByRole('button', { name: 'Lead name: Ana' }));
+    const input = screen.getByRole('textbox', { name: 'Lead name: Ana' });
+    fireEvent.change(input, { target: { value: 'Anna Peeters' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    expect(await screen.findByText('Could not rename.')).toBeInTheDocument();
+    expect(screen.queryByText('Anna Peeters')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Ana')).toHaveLength(2);
+
+    // The cell is not wedged: it left edit mode, and it reopens undisabled with
+    // the original name — no reload needed.
+    await waitFor(() => {
+      expect(screen.queryByRole('textbox', { name: 'Lead name: Ana' })).not.toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Lead name: Ana' }));
+    const reopened = screen.getByRole('textbox', { name: 'Lead name: Ana' });
+    expect(reopened).toHaveValue('Ana');
+    expect(reopened).not.toBeDisabled();
+    fireEvent.change(reopened, { target: { value: 'Anna Peeters' } });
+    expect(reopened).toHaveValue('Anna Peeters');
+  });
+
+  // The bug these two pin: two ordinary clicks used to revert a just-saved
+  // rename. Clicking the attendee-1 cell blurs the lead input first (mousedown
+  // fires focusout before click), so attendee 1 opens seeded with the *old*
+  // name while the lead's PATCH is still in flight. When that PATCH lands the
+  // row swaps under the open editor, and the old comparison against the live
+  // `value` let the next blur write the stale draft back — which, because
+  // attendee 1 is linked to the lead, reverted both.
+  //
+  // Renames 'Ana' → 'Anna' on the lead, then leaves the attendee-1 editor open
+  // and stale (draft 'Ana', prop 'Anna') with the lead's PATCH already landed.
+  // Returns that open input.
+  async function leaveStaleAttendeeEditorOpen() {
+    fireEvent.click(await screen.findByRole('button', { name: 'Lead name: Ana' }));
+    const lead = screen.getByRole('textbox', { name: 'Lead name: Ana' });
+    fireEvent.change(lead, { target: { value: 'Anna' } });
+
+    // mousedown on the attendee-1 cell → focusout on the lead input, which
+    // commits and fires the PATCH...
+    fireEvent.blur(lead);
+    // ...then the same click opens attendee 1, still showing the old name
+    // because the PATCH has not resolved yet.
+    fireEvent.click(screen.getByRole('button', { name: 'Attendee 1 name: Ana' }));
+    const attendee = screen.getByRole('textbox', { name: 'Attendee 1 name: Ana' });
+    expect(attendee).toHaveValue('Ana');
+
+    // Now let the PATCH land: the lead cell renders the new name while the
+    // attendee-1 editor is still open holding the stale draft.
+    await waitFor(() => expect(screen.getAllByText('Anna')).toHaveLength(1));
+    expect(attendee).toBeInTheDocument();
+    expect(attendee).toHaveValue('Ana');
+    return attendee;
+  }
+
+  test('a stale editor opened mid-save does not revert the saved name', async () => {
+    mount();
+    const attendee = await leaveStaleAttendeeEditorOpen();
+
+    // Clicking away blurs the untouched stale editor. It must not write.
+    fireEvent.blur(attendee);
+
+    await waitFor(() => expect(screen.getAllByText('Anna')).toHaveLength(2));
+    expect(screen.queryByText('Ana')).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.filter(([, i]) => i?.method === 'PATCH')).toHaveLength(1);
+    const [path] = fetchMock.mock.calls.find(([, i]) => i?.method === 'PATCH');
+    expect(path).toBe('/api/admin/rsvps/7');
+  });
+
+  test('a stale editor that was typed into is abandoned, not written', async () => {
+    mount();
+    const attendee = await leaveStaleAttendeeEditorOpen();
+
+    // Even a genuinely edited draft is stale now — the row it was seeded from
+    // no longer exists, so writing it would clobber the rename that just
+    // landed. Abandon it and re-seed from the current name instead.
+    fireEvent.change(attendee, { target: { value: 'Bea' } });
+    fireEvent.blur(attendee);
+
+    await waitFor(() => expect(screen.getAllByText('Anna')).toHaveLength(2));
+    expect(screen.queryByText('Bea')).not.toBeInTheDocument();
+    expect(screen.queryByText('Ana')).not.toBeInTheDocument();
     expect(fetchMock.mock.calls.filter(([, i]) => i?.method === 'PATCH')).toHaveLength(1);
   });
 });

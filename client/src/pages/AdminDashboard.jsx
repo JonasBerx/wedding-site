@@ -75,8 +75,14 @@ function EditableName({ value, label, onSave }) {
   // Without this guard that stray blur re-enters commit() with a stale draft —
   // re-sending a request the user cancelled, or repeating one that just failed.
   const suppressBlur = React.useRef(false);
+  // The name this editor was seeded from. `value` is live and can change while
+  // the editor is open (a save on the linked cell lands, the parent swaps the
+  // row), so comparing the draft against `value` would both miss a no-op edit
+  // and let a stale draft overwrite a newer name. Compare against the snapshot.
+  const baseline = React.useRef(value);
 
   function start() {
+    baseline.current = value;
     suppressBlur.current = false;
     setDraft(value);
     setEditing(true);
@@ -96,10 +102,23 @@ function EditableName({ value, label, onSave }) {
     if (suppressBlur.current) { suppressBlur.current = false; return; }
     if (saving) return;
     const next = draft.trim();
-    if (!next || next === value) { close(); return; }
+    if (!next || next === baseline.current) { close(); return; }
+    // The row moved underneath this editor while it was open — the draft is
+    // stale, so abandon it rather than reverting someone else's just-saved
+    // rename (lead and attendee 1 are linked server-side, so a stale write
+    // here would undo both).
+    if (value !== baseline.current) { cancel(); return; }
     setSaving(true);
-    const ok = await onSave(next);
-    setSaving(false);
+    let ok = false;
+    try {
+      ok = await onSave(next);
+    } catch {
+      // onSave should swallow its own failures, but a rejection here must
+      // never leave the cell stuck disabled and un-closable.
+      ok = false;
+    } finally {
+      setSaving(false);
+    }
     if (!ok) setDraft(value);
     close();
   }
@@ -514,16 +533,23 @@ export default function AdminDashboard() {
   // Both renames return the whole updated RSVP, so we swap that one row in
   // place rather than refetching — the table keeps its scroll position and the
   // expanded attendee rows do not flicker.
+  // A dropped connection or a proxy's non-JSON error page must not escape as an
+  // unhandled rejection — the caller only ever sees true/false.
   async function renameVia(path, name) {
-    const res = await apiFetch(path, null, {
-      method: 'PATCH',
-      body: JSON.stringify({ name }),
-    });
-    if (res.status === 401) { handleAuthExpired(); return false; }
-    if (!res.ok) { setToast('Could not rename.'); return false; }
-    const { rsvp } = await res.json();
-    setRsvps(prev => prev.map(r => (r.id === rsvp.id ? rsvp : r)));
-    return true;
+    try {
+      const res = await apiFetch(path, null, {
+        method: 'PATCH',
+        body: JSON.stringify({ name }),
+      });
+      if (res.status === 401) { handleAuthExpired(); return false; }
+      if (!res.ok) { setToast('Could not rename.'); return false; }
+      const { rsvp } = await res.json();
+      setRsvps(prev => prev.map(r => (r.id === rsvp.id ? rsvp : r)));
+      return true;
+    } catch {
+      setToast('Could not rename.');
+      return false;
+    }
   }
 
   const handleRenameLead = (rsvpId, name) =>
