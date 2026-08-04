@@ -295,6 +295,25 @@ function initDb(path = 'rsvps.db') {
     return { ...row, attendees: adminAttendeeRows(db, [row.id]) };
   };
 
+  // Single write path for the lead name so renameRsvpLead and renameAttendee
+  // cannot drift on how name and updated_at are written together.
+  const touchRsvp = (rsvpId, name = undefined) => {
+    if (name === undefined) {
+      db.prepare(`
+        UPDATE rsvps
+           SET updated_at = strftime('%Y-%m-%dT%H:%M:%f','now')
+         WHERE id = :id
+      `).run({ id: rsvpId });
+      return;
+    }
+    db.prepare(`
+      UPDATE rsvps
+         SET name = :name,
+             updated_at = strftime('%Y-%m-%dT%H:%M:%f','now')
+       WHERE id = :id
+    `).run({ id: rsvpId, name });
+  };
+
   return {
     insertRsvp({ name, email, attending, event_type = null, dietary_restrictions = null }) {
       return db.prepare(`
@@ -379,16 +398,12 @@ function initDb(path = 'rsvps.db') {
       if (!Number.isInteger(rsvpId)) return null;
       db.exec('BEGIN IMMEDIATE');
       try {
-        const res = db.prepare(`
-          UPDATE rsvps
-             SET name = :name,
-                 updated_at = strftime('%Y-%m-%dT%H:%M:%f','now')
-           WHERE id = :id
-        `).run({ id: rsvpId, name });
-        if (res.changes === 0) {
+        const row = db.prepare('SELECT id FROM rsvps WHERE id = :id').get({ id: rsvpId });
+        if (!row) {
           db.exec('ROLLBACK');
           return null;
         }
+        touchRsvp(rsvpId, name);
         db.prepare(
           'UPDATE rsvp_attendees SET name = :name WHERE rsvp_id = :id AND position = 1'
         ).run({ id: rsvpId, name });
@@ -415,18 +430,9 @@ function initDb(path = 'rsvps.db') {
           'UPDATE rsvp_attendees SET name = :name WHERE id = :id AND rsvp_id = :rsvp_id'
         ).run({ id: attendeeId, rsvp_id: rsvpId, name });
         if (row.position === 1) {
-          db.prepare(`
-            UPDATE rsvps
-               SET name = :name,
-                   updated_at = strftime('%Y-%m-%dT%H:%M:%f','now')
-             WHERE id = :id
-          `).run({ id: rsvpId, name });
+          touchRsvp(rsvpId, name);
         } else {
-          db.prepare(`
-            UPDATE rsvps
-               SET updated_at = strftime('%Y-%m-%dT%H:%M:%f','now')
-             WHERE id = :id
-          `).run({ id: rsvpId });
+          touchRsvp(rsvpId);
         }
         db.exec('COMMIT');
       } catch (err) {
