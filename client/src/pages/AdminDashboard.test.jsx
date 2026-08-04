@@ -174,3 +174,277 @@ describe('AdminDashboard — seating tab', () => {
     expect(fetchMock.mock.calls.some(([p]) => p.startsWith('/api/admin/seating/tables'))).toBe(false);
   });
 });
+
+const RENAME_RSVPS = [
+  {
+    id: 7,
+    name: 'Ana',
+    email: 'ana@example.com',
+    attending: 1,
+    event_type: 'full',
+    dietary_restrictions: null,
+    song: null,
+    submitted_at: '2026-05-01T10:00:00.000',
+    attendees: [
+      { id: 71, position: 1, name: 'Ana', first_course_name: 'Tomato', main_course_name: 'Lamb', dietary_restrictions: null },
+      { id: 72, position: 2, name: 'Bram', first_course_name: 'Tomato', main_course_name: 'Lamb', dietary_restrictions: null },
+    ],
+  },
+  // A second household, present only to prove that name-cell accessible names
+  // are guest-specific rather than identical across rows (e.g. "Lead name"
+  // would collide between every row without the guest's name baked in). None
+  // of the tests below rename this party.
+  {
+    id: 8,
+    name: 'Cara',
+    email: 'cara@example.com',
+    attending: 1,
+    event_type: 'full',
+    dietary_restrictions: null,
+    song: null,
+    submitted_at: '2026-05-01T11:00:00.000',
+    attendees: [
+      { id: 81, position: 1, name: 'Cara', first_course_name: 'Soup', main_course_name: 'Fish', dietary_restrictions: null },
+    ],
+  },
+];
+
+// Mirrors the server's linkage: renaming the lead (or attendee 1) moves both.
+// `patchRejects` models the transport itself failing (offline, DNS blip) rather
+// than the server answering with an error status.
+function mockRenameApi({ patchOk = true, patchRejects = false } = {}) {
+  return vi.fn(async (path, init = {}) => {
+    if (init.method === 'PATCH') {
+      if (patchRejects) throw new TypeError('Failed to fetch');
+      if (!patchOk) return { ok: false, status: 500, json: async () => ({ error: 'boom' }) };
+      const { name } = JSON.parse(init.body);
+      const rsvp = JSON.parse(JSON.stringify(RENAME_RSVPS[0]));
+      if (path === '/api/admin/rsvps/7') {
+        rsvp.name = name;
+        rsvp.attendees[0].name = name;
+      } else {
+        const a = rsvp.attendees.find(x => path === `/api/admin/rsvps/7/attendees/${x.id}`);
+        a.name = name;
+        if (a.position === 1) rsvp.name = name;
+      }
+      return { ok: true, status: 200, json: async () => ({ rsvp }) };
+    }
+    return {
+      ok: true,
+      status: 200,
+      json: async () => {
+        if (path === '/api/admin/rsvps') return JSON.parse(JSON.stringify(RENAME_RSVPS));
+        if (path === '/api/admin/invites') return { invites: [] };
+        return [];
+      },
+    };
+  });
+}
+
+describe('AdminDashboard — renaming guests', () => {
+  let fetchMock;
+
+  beforeEach(() => {
+    localStorage.setItem('weddingAdminAuth', 'dGVzdDp0ZXN0');
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    vi.unstubAllGlobals();
+  });
+
+  function mount(opts) {
+    fetchMock = mockRenameApi(opts);
+    vi.stubGlobal('fetch', fetchMock);
+    render(<AdminDashboard />);
+  }
+
+  test('clicking a name cell opens an input holding the current name', async () => {
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Lead name: Ana' }));
+    expect(screen.getByRole('textbox', { name: 'Lead name: Ana' })).toHaveValue('Ana');
+    // A second party's lead cell carries a distinct accessible name — proves
+    // the label is guest-specific, not identical across rows.
+    expect(screen.getByRole('button', { name: 'Lead name: Cara' })).toBeInTheDocument();
+  });
+
+  test('Enter PATCHes the lead and updates both the lead and attendee 1', async () => {
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Lead name: Ana' }));
+    const input = screen.getByRole('textbox', { name: 'Lead name: Ana' });
+    fireEvent.change(input, { target: { value: 'Anna Peeters' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.some(([p, i]) => p === '/api/admin/rsvps/7' && i?.method === 'PATCH')).toBe(true);
+    });
+    const [, init] = fetchMock.mock.calls.find(([p, i]) => p === '/api/admin/rsvps/7' && i?.method === 'PATCH');
+    expect(JSON.parse(init.body)).toEqual({ name: 'Anna Peeters' });
+
+    // Lead cell and attendee 1 cell both show the new name; attendee 2 is untouched.
+    await waitFor(() => expect(screen.getAllByText('Anna Peeters')).toHaveLength(2));
+    expect(screen.getByText('Bram')).toBeInTheDocument();
+  });
+
+  test('Enter on an attendee cell PATCHes that attendee', async () => {
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Attendee 2 name: Bram' }));
+    const input = screen.getByRole('textbox', { name: 'Attendee 2 name: Bram' });
+    fireEvent.change(input, { target: { value: 'Bram Peeters' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.some(([p]) => p === '/api/admin/rsvps/7/attendees/72')).toBe(true);
+    });
+    expect(await screen.findByText('Bram Peeters')).toBeInTheDocument();
+    // The lead name did not move.
+    expect(screen.getAllByText('Ana')).toHaveLength(2);
+  });
+
+  test('Escape restores the original name and sends no request', async () => {
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Lead name: Ana' }));
+    const input = screen.getByRole('textbox', { name: 'Lead name: Ana' });
+    fireEvent.change(input, { target: { value: 'Whoops' } });
+    fireEvent.keyDown(input, { key: 'Escape' });
+
+    await waitFor(() => {
+      expect(screen.queryByRole('textbox', { name: 'Lead name: Ana' })).not.toBeInTheDocument();
+    });
+    expect(screen.getAllByText('Ana')).toHaveLength(2);
+    expect(fetchMock.mock.calls.some(([, i]) => i?.method === 'PATCH')).toBe(false);
+  });
+
+  test('an unchanged name closes the cell without a request', async () => {
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Lead name: Ana' }));
+    fireEvent.keyDown(screen.getByRole('textbox', { name: 'Lead name: Ana' }), { key: 'Enter' });
+
+    await waitFor(() => {
+      expect(screen.queryByRole('textbox', { name: 'Lead name: Ana' })).not.toBeInTheDocument();
+    });
+    expect(fetchMock.mock.calls.some(([, i]) => i?.method === 'PATCH')).toBe(false);
+  });
+
+  test('blurring the input saves, just like Enter', async () => {
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Lead name: Ana' }));
+    const input = screen.getByRole('textbox', { name: 'Lead name: Ana' });
+    fireEvent.change(input, { target: { value: 'Anna Peeters' } });
+    fireEvent.blur(input);
+
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.some(([p, i]) => p === '/api/admin/rsvps/7' && i?.method === 'PATCH')).toBe(true);
+    });
+    const [, init] = fetchMock.mock.calls.find(([p, i]) => p === '/api/admin/rsvps/7' && i?.method === 'PATCH');
+    expect(JSON.parse(init.body)).toEqual({ name: 'Anna Peeters' });
+    // Lead cell and attendee 1 cell both moved, and blur saved exactly once.
+    await waitFor(() => expect(screen.getAllByText('Anna Peeters')).toHaveLength(2));
+    expect(fetchMock.mock.calls.filter(([, i]) => i?.method === 'PATCH')).toHaveLength(1);
+  });
+
+  test('a failed rename reverts the cell and shows a toast', async () => {
+    mount({ patchOk: false });
+    fireEvent.click(await screen.findByRole('button', { name: 'Lead name: Ana' }));
+    const input = screen.getByRole('textbox', { name: 'Lead name: Ana' });
+    fireEvent.change(input, { target: { value: 'Anna Peeters' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    expect(await screen.findByText('Could not rename.')).toBeInTheDocument();
+    expect(screen.queryByText('Anna Peeters')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Ana')).toHaveLength(2);
+    // Exactly one attempt: the failure is not retried, and closing the cell
+    // does not re-send it. (This does not exercise the suppressBlur guard —
+    // jsdom fires no blur when a focused element is removed from the DOM. The
+    // guard matters in real browsers; the blur-saves test above covers the
+    // blur path itself.)
+    expect(fetchMock.mock.calls.filter(([, i]) => i?.method === 'PATCH')).toHaveLength(1);
+  });
+
+  test('a rejected fetch toasts, reverts, and leaves the cell usable', async () => {
+    mount({ patchRejects: true });
+    fireEvent.click(await screen.findByRole('button', { name: 'Lead name: Ana' }));
+    const input = screen.getByRole('textbox', { name: 'Lead name: Ana' });
+    fireEvent.change(input, { target: { value: 'Anna Peeters' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    expect(await screen.findByText('Could not rename.')).toBeInTheDocument();
+    expect(screen.queryByText('Anna Peeters')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Ana')).toHaveLength(2);
+
+    // The cell is not wedged: it left edit mode, and it reopens undisabled with
+    // the original name — no reload needed.
+    await waitFor(() => {
+      expect(screen.queryByRole('textbox', { name: 'Lead name: Ana' })).not.toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Lead name: Ana' }));
+    const reopened = screen.getByRole('textbox', { name: 'Lead name: Ana' });
+    expect(reopened).toHaveValue('Ana');
+    expect(reopened).not.toBeDisabled();
+    fireEvent.change(reopened, { target: { value: 'Anna Peeters' } });
+    expect(reopened).toHaveValue('Anna Peeters');
+  });
+
+  // The bug these two pin: two ordinary clicks used to revert a just-saved
+  // rename. Clicking the attendee-1 cell blurs the lead input first (mousedown
+  // fires focusout before click), so attendee 1 opens seeded with the *old*
+  // name while the lead's PATCH is still in flight. When that PATCH lands the
+  // row swaps under the open editor, and the old comparison against the live
+  // `value` let the next blur write the stale draft back — which, because
+  // attendee 1 is linked to the lead, reverted both.
+  //
+  // Renames 'Ana' → 'Anna' on the lead, then leaves the attendee-1 editor open
+  // and stale (draft 'Ana', prop 'Anna') with the lead's PATCH already landed.
+  // Returns that open input.
+  async function leaveStaleAttendeeEditorOpen() {
+    fireEvent.click(await screen.findByRole('button', { name: 'Lead name: Ana' }));
+    const lead = screen.getByRole('textbox', { name: 'Lead name: Ana' });
+    fireEvent.change(lead, { target: { value: 'Anna' } });
+
+    // mousedown on the attendee-1 cell → focusout on the lead input, which
+    // commits and fires the PATCH...
+    fireEvent.blur(lead);
+    // ...then the same click opens attendee 1, still showing the old name
+    // because the PATCH has not resolved yet.
+    fireEvent.click(screen.getByRole('button', { name: 'Attendee 1 name: Ana' }));
+    const attendee = screen.getByRole('textbox', { name: 'Attendee 1 name: Ana' });
+    expect(attendee).toHaveValue('Ana');
+
+    // Now let the PATCH land: the lead cell renders the new name while the
+    // attendee-1 editor is still open holding the stale draft.
+    await waitFor(() => expect(screen.getAllByText('Anna')).toHaveLength(1));
+    expect(attendee).toBeInTheDocument();
+    expect(attendee).toHaveValue('Ana');
+    return attendee;
+  }
+
+  test('a stale editor opened mid-save does not revert the saved name', async () => {
+    mount();
+    const attendee = await leaveStaleAttendeeEditorOpen();
+
+    // Clicking away blurs the untouched stale editor. It must not write.
+    fireEvent.blur(attendee);
+
+    await waitFor(() => expect(screen.getAllByText('Anna')).toHaveLength(2));
+    expect(screen.queryByText('Ana')).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.filter(([, i]) => i?.method === 'PATCH')).toHaveLength(1);
+    const [path] = fetchMock.mock.calls.find(([, i]) => i?.method === 'PATCH');
+    expect(path).toBe('/api/admin/rsvps/7');
+  });
+
+  test('a stale editor that was typed into is abandoned, not written', async () => {
+    mount();
+    const attendee = await leaveStaleAttendeeEditorOpen();
+
+    // Even a genuinely edited draft is stale now — the row it was seeded from
+    // no longer exists, so writing it would clobber the rename that just
+    // landed. Abandon it and re-seed from the current name instead.
+    fireEvent.change(attendee, { target: { value: 'Bea' } });
+    fireEvent.blur(attendee);
+
+    await waitFor(() => expect(screen.getAllByText('Anna')).toHaveLength(2));
+    expect(screen.queryByText('Bea')).not.toBeInTheDocument();
+    expect(screen.queryByText('Ana')).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.filter(([, i]) => i?.method === 'PATCH')).toHaveLength(1);
+  });
+});

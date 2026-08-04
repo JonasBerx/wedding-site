@@ -64,6 +64,96 @@ const tdStyle = {
   borderBottom: `1px solid ${RULE_SOFT}`, verticalAlign: 'top',
 };
 
+// Click-to-edit name cell. Enter or blur saves, Escape cancels. Deliberately
+// dumb about transport: the parent owns the request, so the lead cell and the
+// attendee cells can hit different endpoints while sharing this UI.
+function EditableName({ value, label, onSave }) {
+  const [editing, setEditing] = React.useState(false);
+  const [draft, setDraft] = React.useState(value);
+  const [saving, setSaving] = React.useState(false);
+  // Leaving edit mode unmounts the input, which can fire blur on the way out.
+  // Without this guard that stray blur re-enters commit() with a stale draft —
+  // re-sending a request the user cancelled, or repeating one that just failed.
+  const suppressBlur = React.useRef(false);
+  // The name this editor was seeded from. `value` is live and can change while
+  // the editor is open (a save on the linked cell lands, the parent swaps the
+  // row), so comparing the draft against `value` would both miss a no-op edit
+  // and let a stale draft overwrite a newer name. Compare against the snapshot.
+  const baseline = React.useRef(value);
+
+  function start() {
+    baseline.current = value;
+    suppressBlur.current = false;
+    setDraft(value);
+    setEditing(true);
+  }
+
+  function close() {
+    suppressBlur.current = true;
+    setEditing(false);
+  }
+
+  function cancel() {
+    setDraft(value);
+    close();
+  }
+
+  async function commit() {
+    if (suppressBlur.current) { suppressBlur.current = false; return; }
+    if (saving) return;
+    const next = draft.trim();
+    if (!next || next === baseline.current) { close(); return; }
+    // The row moved underneath this editor while it was open — the draft is
+    // stale, so abandon it rather than reverting someone else's just-saved
+    // rename (lead and attendee 1 are linked server-side, so a stale write
+    // here would undo both).
+    if (value !== baseline.current) { cancel(); return; }
+    setSaving(true);
+    let ok = false;
+    try {
+      ok = await onSave(next);
+    } catch {
+      // onSave should swallow its own failures, but a rejection here must
+      // never leave the cell stuck disabled and un-closable.
+      ok = false;
+    } finally {
+      setSaving(false);
+    }
+    if (!ok) setDraft(value);
+    close();
+  }
+
+  if (!editing) {
+    return (
+      <span
+        role="button"
+        tabIndex={0}
+        aria-label={label}
+        title="Click to rename"
+        onClick={start}
+        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); start(); } }}
+        style={{ cursor: 'text', borderBottom: `1px dotted ${RULE}` }}
+      >{value}</span>
+    );
+  }
+
+  return (
+    <input
+      autoFocus
+      aria-label={label}
+      value={draft}
+      disabled={saving}
+      onChange={e => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={e => {
+        if (e.key === 'Enter') { e.preventDefault(); commit(); }
+        else if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+      }}
+      style={{ ...inputStyle, fontSize: 14, padding: '2px 0' }}
+    />
+  );
+}
+
 function GuestPhotosAdminTab({ apiFetch }) {
   const [data, setData] = React.useState({ items: [], stats: { total: 0, hidden: 0, total_bytes: 0 } });
   const [qrTarget, setQrTarget] = React.useState('');
@@ -440,6 +530,34 @@ export default function AdminDashboard() {
     await loadData();
   }
 
+  // Both renames return the whole updated RSVP, so we swap that one row in
+  // place rather than refetching — the table keeps its scroll position and the
+  // expanded attendee rows do not flicker.
+  // A dropped connection or a proxy's non-JSON error page must not escape as an
+  // unhandled rejection — the caller only ever sees true/false.
+  async function renameVia(path, name) {
+    try {
+      const res = await apiFetch(path, null, {
+        method: 'PATCH',
+        body: JSON.stringify({ name }),
+      });
+      if (res.status === 401) { handleAuthExpired(); return false; }
+      if (!res.ok) { setToast('Could not rename.'); return false; }
+      const { rsvp } = await res.json();
+      setRsvps(prev => prev.map(r => (r.id === rsvp.id ? rsvp : r)));
+      return true;
+    } catch {
+      setToast('Could not rename.');
+      return false;
+    }
+  }
+
+  const handleRenameLead = (rsvpId, name) =>
+    renameVia(`/api/admin/rsvps/${rsvpId}`, name);
+
+  const handleRenameAttendee = (rsvpId, attendeeId, name) =>
+    renameVia(`/api/admin/rsvps/${rsvpId}/attendees/${attendeeId}`, name);
+
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
   async function handleMenuDragEnd(course, event) {
@@ -576,7 +694,13 @@ export default function AdminDashboard() {
                     <React.Fragment key={r.id}>
                       <tr>
                         <td style={tdStyle}>{r.id}</td>
-                        <td style={tdStyle}>{r.name}</td>
+                        <td style={tdStyle}>
+                          <EditableName
+                            value={r.name}
+                            label={`Lead name: ${r.name}`}
+                            onSave={n => handleRenameLead(r.id, n)}
+                          />
+                        </td>
                         <td style={tdStyle}>{r.email}</td>
                         <td style={tdStyle}>{r.attending ? 'Yes' : 'No'}</td>
                         <td style={tdStyle}>
@@ -603,9 +727,15 @@ export default function AdminDashboard() {
                               </thead>
                               <tbody>
                                 {r.attendees.map(a => (
-                                  <tr key={a.position}>
+                                  <tr key={a.id}>
                                     <td style={tdStyle}>{a.position}</td>
-                                    <td style={tdStyle}>{a.name}</td>
+                                    <td style={tdStyle}>
+                                      <EditableName
+                                        value={a.name}
+                                        label={`Attendee ${a.position} name: ${a.name}`}
+                                        onSave={n => handleRenameAttendee(r.id, a.id, n)}
+                                      />
+                                    </td>
                                     <td style={tdStyle}>{a.first_course_name || '—'}</td>
                                     <td style={tdStyle}>{a.main_course_name  || '—'}</td>
                                     <td style={tdStyle}>{a.dietary_restrictions || '—'}</td>

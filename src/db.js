@@ -72,6 +72,23 @@ function reconcileAttendees(db, rsvpId, desired) {
   for (const row of available) del.run({ id: row.id });
 }
 
+// Attendee rows in the admin shape — menu names resolved, ids included.
+// Shared by getAllRsvps and getAdminRsvpById so the two cannot drift apart.
+function adminAttendeeRows(db, rsvpIds) {
+  if (rsvpIds.length === 0) return [];
+  const placeholders = rsvpIds.map(() => '?').join(',');
+  return db.prepare(`
+    SELECT a.*,
+           f.name AS first_course_name,
+           m.name AS main_course_name
+    FROM rsvp_attendees a
+    LEFT JOIN menu_items f ON a.first_course_id = f.id
+    LEFT JOIN menu_items m ON a.main_course_id  = m.id
+    WHERE a.rsvp_id IN (${placeholders})
+    ORDER BY a.rsvp_id, a.position
+  `).all(...rsvpIds);
+}
+
 function initDb(path = 'rsvps.db') {
   const db = new DatabaseSync(path);
   db.exec('PRAGMA foreign_keys = ON');
@@ -269,6 +286,34 @@ function initDb(path = 'rsvps.db') {
     return row ? row.value : null;
   };
 
+  // Local (not `this`-bound) so the rename methods can reuse it even when
+  // they are destructured off the returned object.
+  const getAdminRsvpById = (id) => {
+    if (!Number.isInteger(id)) return null;
+    const row = db.prepare('SELECT * FROM rsvps WHERE id = :id').get({ id });
+    if (!row) return null;
+    return { ...row, attendees: adminAttendeeRows(db, [row.id]) };
+  };
+
+  // Single write path for the lead name so renameRsvpLead and renameAttendee
+  // cannot drift on how name and updated_at are written together.
+  const touchRsvp = (rsvpId, name = undefined) => {
+    if (name === undefined) {
+      db.prepare(`
+        UPDATE rsvps
+           SET updated_at = strftime('%Y-%m-%dT%H:%M:%f','now')
+         WHERE id = :id
+      `).run({ id: rsvpId });
+      return;
+    }
+    db.prepare(`
+      UPDATE rsvps
+         SET name = :name,
+             updated_at = strftime('%Y-%m-%dT%H:%M:%f','now')
+       WHERE id = :id
+    `).run({ id: rsvpId, name });
+  };
+
   return {
     insertRsvp({ name, email, attending, event_type = null, dietary_restrictions = null }) {
       return db.prepare(`
@@ -333,21 +378,68 @@ function initDb(path = 'rsvps.db') {
     getAllRsvps() {
       const rsvps = db.prepare(`SELECT * FROM rsvps ORDER BY id DESC`).all();
       if (rsvps.length === 0) return [];
-      const ids = rsvps.map(r => r.id);
-      const placeholders = ids.map(() => '?').join(',');
-      const attendees = db.prepare(`
-        SELECT a.*,
-               f.name AS first_course_name,
-               m.name AS main_course_name
-        FROM rsvp_attendees a
-        LEFT JOIN menu_items f ON a.first_course_id = f.id
-        LEFT JOIN menu_items m ON a.main_course_id  = m.id
-        WHERE a.rsvp_id IN (${placeholders})
-        ORDER BY a.rsvp_id, a.position
-      `).all(...ids);
+      const attendees = adminAttendeeRows(db, rsvps.map(r => r.id));
       const grouped = new Map(rsvps.map(r => [r.id, []]));
       for (const a of attendees) grouped.get(a.rsvp_id).push(a);
       return rsvps.map(r => ({ ...r, attendees: grouped.get(r.id) }));
+    },
+
+    getAdminRsvpById,
+
+    // Admin corrections. Deliberately NOT routed through upsertRsvp: its
+    // reconcileAttendees matches people by name and cannot tell a rename from a
+    // substitution (see the comment at the top of this file). A targeted UPDATE
+    // also leaves rsvp_attendees.id alone, so seating assignments survive.
+    //
+    // The guest route pins attendee position 1 to the lead name
+    // (src/routes/rsvp.js), so both sides move together here — otherwise a later
+    // guest re-submit would silently undo half the correction.
+    renameRsvpLead(rsvpId, name) {
+      if (!Number.isInteger(rsvpId)) return null;
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        const row = db.prepare('SELECT id FROM rsvps WHERE id = :id').get({ id: rsvpId });
+        if (!row) {
+          db.exec('ROLLBACK');
+          return null;
+        }
+        touchRsvp(rsvpId, name);
+        db.prepare(
+          'UPDATE rsvp_attendees SET name = :name WHERE rsvp_id = :id AND position = 1'
+        ).run({ id: rsvpId, name });
+        db.exec('COMMIT');
+      } catch (err) {
+        db.exec('ROLLBACK');
+        throw err;
+      }
+      return getAdminRsvpById(rsvpId);
+    },
+
+    renameAttendee(rsvpId, attendeeId, name) {
+      if (!Number.isInteger(rsvpId) || !Number.isInteger(attendeeId)) return null;
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        const row = db.prepare(
+          'SELECT id, position FROM rsvp_attendees WHERE id = :id AND rsvp_id = :rsvp_id'
+        ).get({ id: attendeeId, rsvp_id: rsvpId });
+        if (!row) {
+          db.exec('ROLLBACK');
+          return null;
+        }
+        db.prepare(
+          'UPDATE rsvp_attendees SET name = :name WHERE id = :id AND rsvp_id = :rsvp_id'
+        ).run({ id: attendeeId, rsvp_id: rsvpId, name });
+        if (row.position === 1) {
+          touchRsvp(rsvpId, name);
+        } else {
+          touchRsvp(rsvpId);
+        }
+        db.exec('COMMIT');
+      } catch (err) {
+        db.exec('ROLLBACK');
+        throw err;
+      }
+      return getAdminRsvpById(rsvpId);
     },
 
     getEmailByRsvpId(id) {
