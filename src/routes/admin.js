@@ -6,6 +6,21 @@ function buildInviteUrl(req, token) {
   return `${origin.replace(/\/+$/, '')}/rsvp?invite=${encodeURIComponent(token)}`;
 }
 
+const MAX_NAME_LEN = 120;
+
+// Same rules the guest route applies (src/routes/rsvp.js), so an admin edit
+// cannot produce a name a guest submit would have rejected.
+function cleanName(body) {
+  const raw = body && typeof body.name === 'string' ? body.name.trim() : '';
+  if (!raw || raw.length > MAX_NAME_LEN) return null;
+  return raw;
+}
+
+function parseId(raw) {
+  const n = parseInt(raw, 10);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
 function createAdminRouter(db) {
   const router = express.Router();
 
@@ -66,6 +81,33 @@ function createAdminRouter(db) {
 
   router.get('/rsvps', requireAuth, (req, res) => {
     res.json(db.getAllRsvps());
+  });
+
+  router.patch('/rsvps/:id', requireAuth, (req, res) => {
+    const id = parseId(req.params.id);
+    if (id === null) return res.status(400).json({ error: 'invalid_id' });
+    const name = cleanName(req.body);
+    if (name === null) return res.status(400).json({ error: 'invalid_name' });
+
+    const rsvp = db.renameRsvpLead(id, name);
+    if (!rsvp) return res.status(404).json({ error: 'rsvp_not_found' });
+    res.json({ rsvp });
+  });
+
+  router.patch('/rsvps/:id/attendees/:attendeeId', requireAuth, (req, res) => {
+    const id = parseId(req.params.id);
+    const attendeeId = parseId(req.params.attendeeId);
+    if (id === null || attendeeId === null) return res.status(400).json({ error: 'invalid_id' });
+    const name = cleanName(req.body);
+    if (name === null) return res.status(400).json({ error: 'invalid_name' });
+
+    // Distinguish "no such party" from "no such seat in this party" so the
+    // dashboard can tell a stale row apart from a bad attendee id.
+    if (!db.getAdminRsvpById(id)) return res.status(404).json({ error: 'rsvp_not_found' });
+
+    const rsvp = db.renameAttendee(id, attendeeId, name);
+    if (!rsvp) return res.status(404).json({ error: 'attendee_not_found' });
+    res.json({ rsvp });
   });
 
   router.get('/meal-counts', requireAuth, (req, res) => {
