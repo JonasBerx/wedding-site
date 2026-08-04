@@ -190,6 +190,23 @@ const RENAME_RSVPS = [
       { id: 72, position: 2, name: 'Bram', first_course_name: 'Tomato', main_course_name: 'Lamb', dietary_restrictions: null },
     ],
   },
+  // A second household, present only to prove that name-cell accessible names
+  // are guest-specific rather than identical across rows (e.g. "Lead name"
+  // would collide between every row without the guest's name baked in). None
+  // of the tests below rename this party.
+  {
+    id: 8,
+    name: 'Cara',
+    email: 'cara@example.com',
+    attending: 1,
+    event_type: 'full',
+    dietary_restrictions: null,
+    song: null,
+    submitted_at: '2026-05-01T11:00:00.000',
+    attendees: [
+      { id: 81, position: 1, name: 'Cara', first_course_name: 'Soup', main_course_name: 'Fish', dietary_restrictions: null },
+    ],
+  },
 ];
 
 // Mirrors the server's linkage: renaming the lead (or attendee 1) moves both.
@@ -241,14 +258,17 @@ describe('AdminDashboard — renaming guests', () => {
 
   test('clicking a name cell opens an input holding the current name', async () => {
     mount();
-    fireEvent.click(await screen.findByRole('button', { name: 'Lead name' }));
-    expect(screen.getByRole('textbox', { name: 'Lead name' })).toHaveValue('Ana');
+    fireEvent.click(await screen.findByRole('button', { name: 'Lead name: Ana' }));
+    expect(screen.getByRole('textbox', { name: 'Lead name: Ana' })).toHaveValue('Ana');
+    // A second party's lead cell carries a distinct accessible name — proves
+    // the label is guest-specific, not identical across rows.
+    expect(screen.getByRole('button', { name: 'Lead name: Cara' })).toBeInTheDocument();
   });
 
   test('Enter PATCHes the lead and updates both the lead and attendee 1', async () => {
     mount();
-    fireEvent.click(await screen.findByRole('button', { name: 'Lead name' }));
-    const input = screen.getByRole('textbox', { name: 'Lead name' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Lead name: Ana' }));
+    const input = screen.getByRole('textbox', { name: 'Lead name: Ana' });
     fireEvent.change(input, { target: { value: 'Anna Peeters' } });
     fireEvent.keyDown(input, { key: 'Enter' });
 
@@ -265,8 +285,8 @@ describe('AdminDashboard — renaming guests', () => {
 
   test('Enter on an attendee cell PATCHes that attendee', async () => {
     mount();
-    fireEvent.click(await screen.findByRole('button', { name: 'Attendee 2 name' }));
-    const input = screen.getByRole('textbox', { name: 'Attendee 2 name' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Attendee 2 name: Bram' }));
+    const input = screen.getByRole('textbox', { name: 'Attendee 2 name: Bram' });
     fireEvent.change(input, { target: { value: 'Bram Peeters' } });
     fireEvent.keyDown(input, { key: 'Enter' });
 
@@ -280,13 +300,13 @@ describe('AdminDashboard — renaming guests', () => {
 
   test('Escape restores the original name and sends no request', async () => {
     mount();
-    fireEvent.click(await screen.findByRole('button', { name: 'Lead name' }));
-    const input = screen.getByRole('textbox', { name: 'Lead name' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Lead name: Ana' }));
+    const input = screen.getByRole('textbox', { name: 'Lead name: Ana' });
     fireEvent.change(input, { target: { value: 'Whoops' } });
     fireEvent.keyDown(input, { key: 'Escape' });
 
     await waitFor(() => {
-      expect(screen.queryByRole('textbox', { name: 'Lead name' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('textbox', { name: 'Lead name: Ana' })).not.toBeInTheDocument();
     });
     expect(screen.getAllByText('Ana')).toHaveLength(2);
     expect(fetchMock.mock.calls.some(([, i]) => i?.method === 'PATCH')).toBe(false);
@@ -294,19 +314,19 @@ describe('AdminDashboard — renaming guests', () => {
 
   test('an unchanged name closes the cell without a request', async () => {
     mount();
-    fireEvent.click(await screen.findByRole('button', { name: 'Lead name' }));
-    fireEvent.keyDown(screen.getByRole('textbox', { name: 'Lead name' }), { key: 'Enter' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Lead name: Ana' }));
+    fireEvent.keyDown(screen.getByRole('textbox', { name: 'Lead name: Ana' }), { key: 'Enter' });
 
     await waitFor(() => {
-      expect(screen.queryByRole('textbox', { name: 'Lead name' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('textbox', { name: 'Lead name: Ana' })).not.toBeInTheDocument();
     });
     expect(fetchMock.mock.calls.some(([, i]) => i?.method === 'PATCH')).toBe(false);
   });
 
   test('a failed rename reverts the cell and shows a toast', async () => {
     mount({ patchOk: false });
-    fireEvent.click(await screen.findByRole('button', { name: 'Lead name' }));
-    const input = screen.getByRole('textbox', { name: 'Lead name' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Lead name: Ana' }));
+    const input = screen.getByRole('textbox', { name: 'Lead name: Ana' });
     fireEvent.change(input, { target: { value: 'Anna Peeters' } });
     fireEvent.keyDown(input, { key: 'Enter' });
 

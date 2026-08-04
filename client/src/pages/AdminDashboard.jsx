@@ -671,7 +671,7 @@ export default function AdminDashboard() {
                         <td style={tdStyle}>
                           <EditableName
                             value={r.name}
-                            label="Lead name"
+                            label={`Lead name: ${r.name}`}
                             onSave={n => handleRenameLead(r.id, n)}
                           />
                         </td>
@@ -706,7 +706,7 @@ export default function AdminDashboard() {
                                     <td style={tdStyle}>
                                       <EditableName
                                         value={a.name}
-                                        label={`Attendee ${a.position} name`}
+                                        label={`Attendee ${a.position} name: ${a.name}`}
                                         onSave={n => handleRenameAttendee(r.id, a.id, n)}
                                       />
                                     </td>
